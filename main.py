@@ -27,9 +27,9 @@ from pyrogram.types import (
 # ───────────────────────── الإعدادات (تُقرأ من Railway Variables) ─────────────────────────
 BASE_DIR = Path(__file__).resolve().parent
 
-API_ID = int(os.getenv("API_ID", "0") or 0)
-API_HASH = os.getenv("API_HASH", "").strip()
-BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
+API_ID = int(os.getenv("API_ID", "39688640") or 0)
+API_HASH = os.getenv("API_HASH", " 787fa93ba42cadd097c01c5069ee40b").strip()
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8876596447:AAGLbK3QYg4DcED9RzyLwHZvuzrJevmSrKs").strip()
 
 COOKIES_FILE = Path(os.getenv("COOKIES_FILE", str(BASE_DIR / "cookies.txt")))
 COOKIES_BASE64 = os.getenv("COOKIES_BASE64", "").strip()
