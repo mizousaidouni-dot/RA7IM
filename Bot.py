@@ -8,8 +8,8 @@
 
 المتطلبات: Python 3.10+  و  ffmpeg
 التشغيل:
-    export API_ID="1234567"
-    export API_HASH="abcdef0123456789abcdef0123456789"
+    export API_ID="39688640"
+    export API_HASH="78e7fa93ba42cadd097c01c5069ee40b"
     export BOT_TOKEN="123456:ABC..."
     python bot.py
 """
@@ -39,8 +39,8 @@ from pyrogram.types import (
 BASE_DIR = Path(__file__).resolve().parent
 
 # يمكنك وضع القيم هنا مباشرة بدل متغيرات البيئة
-API_ID = int(os.getenv("API_ID", "0") or 0)
-API_HASH = os.getenv("API_HASH", "")
+API_ID = int(os.getenv("API_ID", "39688640") or 0)
+API_HASH = os.getenv("API_HASH", "787fa93ba42cadd097c01c5069ee40b")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8876596447:AAGLbK3QYg4DcED9RzyLwHZvuzrJevmSrKs")
 
 # مكان ملف الكوكيز: بنفس مجلد bot.py باسم cookies.txt (أو غيّره بالمتغير COOKIES_FILE)
