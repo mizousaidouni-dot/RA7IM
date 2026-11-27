@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}تسجيل الدخول | RA7 STOR{% endblock %}
+{% block content %}
+<div class="panel narrow" style="margin-top:50px">
+  <h2 class="display">تسجيل الدخول</h2>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="username">اسم المستخدم</label>
+    <input id="username" name="username" required autocomplete="username" autofocus>
+    <label for="password">كلمة المرور</label>
+    <input id="password" type="password" name="password" required autocomplete="current-password">
+    <button class="btn block">دخول</button>
+  </form>
+  <p class="muted" style="margin-top:16px">ليس لديك حساب؟ <a href="{{ url_for('register') }}" style="color:var(--primary-2)">أنشئ حساباً</a></p>
+</div>
+{% endblock %}

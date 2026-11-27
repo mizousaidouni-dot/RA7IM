@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}إعدادات الحساب | RA7 STOR{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="panel mid">
+    <h2 class="display">لون حسابك</h2>
+    <p class="muted">اختر اللون الذي يعجبك. يتغير المتجر فوراً ويُحفظ في حسابك فقط، فلا يتأثر به أي مستخدم آخر.</p>
+    <div class="theme-cards">
+      {% set previews = {
+        'gold': ['#0e0d0b','#d4af37','#211e15'], 'emerald': ['#06130f','#2fbf8f','#123127'],
+        'blue': ['#0a1020','#4aa8ff','#1a2642'], 'rose': ['#160a10','#f06292','#321723'],
+        'violet': ['#0f0a1c','#a78bfa','#231a3a'], 'crimson': ['#130808','#e5484d','#2d1414'],
+        'ivory': ['#f6f2ea','#a87a12','#efe8d8'] } %}
+      {% for key, label, color in themes %}
+      <button type="button" class="theme-card" data-theme-pick="{{ key }}" aria-pressed="false">
+        <div class="theme-preview" style="background:{{ previews[key][0] }}">
+          <i style="background:{{ previews[key][2] }}"></i><i style="background:{{ previews[key][1] }}"></i><i style="background:{{ previews[key][2] }}"></i>
+        </div>
+        <b>{{ label }}</b>
+      </button>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="panel mid" style="margin-top:24px">
+    <h2 class="display">تغيير كلمة المرور</h2>
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="old_password">كلمة المرور الحالية</label>
+      <input id="old_password" type="password" name="old_password" required autocomplete="current-password">
+      <label for="new_password">كلمة المرور الجديدة</label>
+      <input id="new_password" type="password" name="new_password" required minlength="6" autocomplete="new-password">
+      <button class="btn">حفظ كلمة المرور</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

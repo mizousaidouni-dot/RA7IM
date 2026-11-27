@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}إضافة منتج | RA7 STOR{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="panel mid">
+    <h2 class="display">إضافة منتج للبيع</h2>
+    <form method="post" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="title">اسم المنتج</label>
+      <input id="title" name="title" required maxlength="120">
+      <div class="row">
+        <div style="flex:1;min-width:180px"><label for="price">السعر</label><input id="price" name="price" required maxlength="50" placeholder="مثال: 25000 دج"></div>
+        <div style="flex:1;min-width:180px"><label for="category">التصنيف</label>
+          <select id="category" name="category">{% for c in categories %}<option>{{ c }}</option>{% endfor %}</select></div>
+      </div>
+      <label for="images">صور المنتج (حتى 6 صور، JPG أو PNG أو WEBP)</label>
+      <input id="images" type="file" name="images" accept="image/*" multiple required>
+      <label for="description">وصف المنتج</label>
+      <textarea id="description" name="description" rows="6" required></textarea>
+      <button class="btn">انشر المنتج</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

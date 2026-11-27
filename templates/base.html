@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="{{ current_theme }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}RA7 STOR | متجر النخبة{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Reem+Kufi:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script>
+    /* الزائر غير المسجل: نقرأ لونه المحفوظ في المتصفح قبل رسم الصفحة */
+    {% if not user %}
+    try { var t = localStorage.getItem('ra7_theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch(e) {}
+    {% endif %}
+  </script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs><linearGradient id="goldGrad" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="var(--primary-2)"/><stop offset="1" stop-color="var(--primary)"/>
+  </linearGradient></defs>
+</svg>
+
+<nav class="nav">
+  <a class="brand display" href="{{ url_for('index') }}">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h18l1.5-10-5.2 4.2L12 4 6.7 12.2 1.5 8 3 18zm1 2h16v2H4z"/></svg>
+    <span>RA7 STOR</span>
+  </a>
+  <div class="nav-spacer"></div>
+
+  <details class="palette">
+    <summary title="غيّر لون المتجر" aria-label="غيّر لون المتجر">🎨</summary>
+    <div class="palette-menu">
+      <p>{% if user %}يُحفظ اللون في حسابك ويظهر لك في كل جهاز.{% else %}اختر لوناً. سجّل الدخول لحفظه في حسابك.{% endif %}</p>
+      <div class="swatches">
+        {% for key, label, color in themes %}
+        <button type="button" class="swatch" style="--c:{{ color }}" data-theme-pick="{{ key }}" title="{{ label }}" aria-label="{{ label }}" aria-pressed="false"></button>
+        {% endfor %}
+      </div>
+    </div>
+  </details>
+
+  <div class="nav-links">
+    {% if user %}
+      <a class="btn small" href="{{ url_for('add_product') }}">+ بيع منتج</a>
+      <a class="btn small ghost" href="{{ url_for('inbox') }}">الرسائل {% if unread_count %}<span class="badge-count">{{ unread_count }}</span>{% endif %}</a>
+      {% if user.is_admin %}<a class="btn small ghost" href="{{ url_for('admin_panel') }}">المالك</a>{% endif %}
+      <a class="btn small ghost" href="{{ url_for('settings') }}">{{ user.username }}</a>
+      <form method="post" action="{{ url_for('logout') }}" style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn small ghost" style="margin:0;width:auto">خروج</button>
+      </form>
+    {% else %}
+      <a class="btn small ghost" href="{{ url_for('login') }}">دخول</a>
+      <a class="btn small" href="{{ url_for('register') }}">إنشاء حساب</a>
+    {% endif %}
+  </div>
+</nav>
+
+<main class="wrap">
+  {% with msgs = get_flashed_messages() %}{% for m in msgs %}<div class="flash">{{ m }}</div>{% endfor %}{% endwith %}
+  {% block content %}{% endblock %}
+</main>
+
+<footer>RA7 STOR · محادثات مشفرة بين البائع والمشتري</footer>
+
+<script>
+(function () {
+  var loggedIn = {{ 'true' if user else 'false' }};
+  var csrf = "{{ csrf_token() }}";
+  var root = document.documentElement;
+
+  function mark(theme) {
+    document.querySelectorAll('[data-theme-pick]').forEach(function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-theme-pick') === theme ? 'true' : 'false');
+    });
+  }
+  mark(root.getAttribute('data-theme'));
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-theme-pick]');
+    if (!btn) return;
+    var theme = btn.getAttribute('data-theme-pick');
+    root.setAttribute('data-theme', theme);
+    mark(theme);
+    if (loggedIn) {
+      fetch('/theme/' + theme, { method: 'POST', headers: { 'X-CSRF-Token': csrf } });
+    } else {
+      try { localStorage.setItem('ra7_theme', theme); } catch (err) {}
+    }
+  });
+})();
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
