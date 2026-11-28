@@ -88,7 +88,8 @@ def assemble_proto(fields):
 def read_varint(data, offset):
  r, s = 0, 0
  while True:
-     b = data[offset]; offset += 1
+     b = data[offset]
+     offset += 1
      r |= (b & 0x7F) << s
      if not (b & 0x80):
          break
@@ -119,8 +120,6 @@ def parse_proto(data):
          out[f] = val.decode("utf-8")
  except Exception:
      out[f] = val.hex()
- else:
-     break
  except Exception:
      break
      return out
@@ -217,6 +216,7 @@ def generate_one_backend(region):
  20: "2.133.8",
  21: 1,
  22: bytes.fromhex("474752450101010062020000a78910bd098e3ff2e4345d59a31db114ea088f37e32e65212ff96621793d9eb78720d0bf2ac95176569765247ada5eb01376b3b9931794a4946d76ef8890779f3f2129317e6e1cb2fdcf7b06247cea343b8d4f167eff85a2e1dfe99b4583a7e1a155dbe7f7f85cff3b223eb77222ec1228f3ee1ef6ce7f8ca24b00a554e497328812f8df74c82d519ae3e3ceab436eb145e8a517089a7cef6a4efb22214b2a4b19989b74807584afe5e52825e7ac60e19a596a9bf02d961de6a0ed2515ec6023fdb7684d9464b97b21c527ce61b6bee4ef30d20a1fa33a996952d44d44e44f2f86c768aaf2a7808ad60f91048dca0207961ba7c2555c48341b30190debc775edb2cee244cf51fca3760ce4388be2db45e80b813b5beb9c784007b7762d7a1e428affc8a3a4cd76cbaef648a274297fde33233dccd3f272cb77f39a1affe0365a24954111f768f720e77535af024bea2b2726c3bac992374755c3deacf09235e6865d456e651680d115a751a797225eaacdf9a513cf104526e1a32e5296e111a33ae581a63850837921df8489adfd41ea895b7cf3f5b2e45d538a6e4f032f590ccbb7daf5fa9c50adadee07996614c3f957bda349e6c484fdf55970d1943ad7955a76671298b6d98b636b69ebde6bc94dbd93ac3393a6ae230130445b2d744189167854a5617be2393e7d8fbb5719a1b47541ba466167e3e05a6c244f1301ee2035acf94dffc8adbde747d5cd85e35ead3acc372a59c4220e54bf63f9d80485f3de2518495c1d0f78c911d2da595911fd2a1989cf17cf3ded5f6c92dea64d675c555c11df92d6c517ca5d0d61a8962f43f76ec7e87596c8325ebf9ab0f8e6d2eca33c511ceac6980906ebd68c478665591dcecf788ec6ef34cfbe3fcc279c6147c5bf91cd43cdc9704236")
+ }
  encrypted = aes_encrypt(assemble_proto(fields))
  headers = {
  "Host": "loginbp.ppmainecoonghj.com",
@@ -296,9 +296,14 @@ def generate_one_backend(region):
      jwt = jwt.decode("utf-8", "ignore")
  
  return {
- "uid": uid, "password": password, "nickname": nickname,
- "open_id": open_id, "access_token": access_token,
- "account_id": 12345678, "region": region, "jwt": jwt,
+ "uid": uid,
+ "password": password,
+ "nickname": nickname,
+ "open_id": open_id,
+ "access_token": access_token,
+ "account_id": 12345678,
+ "region": region,
+ "jwt": jwt,
  "session_key": "0x" + str(hashlib.sha256(open_id.encode()).hexdigest()[:16]),
  "session_iv": "0x" + str(hashlib.sha256(open_id.encode()).hexdigest()[:16]),
  }
@@ -324,7 +329,8 @@ def generate():
      futures = [executor.submit(generate_one_backend, region) for _ in range(count)]
      for future in as_completed(futures):
          acc = future.result()
-         if acc: result.append(acc)
+         if acc:
+             result.append(acc)
  
  return jsonify({"success": True, "accounts": result})
 
