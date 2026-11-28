@@ -1,5 +1,4 @@
 import os
-import sys
 import json
 import time
 import random
@@ -14,13 +13,18 @@ import urllib.error
 import ssl
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, session
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_DIR = os.path.join(BASE_DIR, 'templates')
 PROXY_FILE = os.path.join(BASE_DIR, 'proxies.txt')
+KEYS_FILE = os.path.join(BASE_DIR, 'access_keys.json')
+
+OWNER_USERNAME = os.environ.get("OWNER_USERNAME", "OWNER")
+OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", "RAHIM@OWNER2026")
 
 app = Flask(__name__, template_folder=TEMPLATE_DIR)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "ff_owner_secret_key_2026_change_me")
 SSL_CONTEXT = ssl._create_unverified_context()
 
 
@@ -45,6 +49,10 @@ _proxy_list = []
 _proxy_lock = threading.Lock()
 _proxy_idx = 0
 
+_keys_lock = threading.Lock()
+_used_names = set()
+_used_lock = threading.Lock()
+
 
 def load_proxies():
     global _proxy_list
@@ -68,18 +76,77 @@ def next_proxy():
         return p
 
 
-SERVERS = [
-    ("IND", "India", "clientbp.ind.freefiremobile.com"),
-    ("BD", "Bangladesh", "clientbp.bd.freefiremobile.com"),
-    ("SG", "Singapore", "clientbp.sg.freefiremobile.com"),
-    ("ID", "Indonesia", "clientbp.id.freefiremobile.com"),
-    ("TH", "Thailand", "clientbp.th.freefiremobile.com"),
-    ("PK", "Pakistan", "clientbp.pk.freefiremobile.com"),
-    ("ME", "Middle East", "https://clientbp.ppmainecoonghj.com"),
-    ("VN", "Vietnam", "clientbp.vn.freefiremobile.com"),
-    ("BR", "Brazil", "clientbp.br.freefiremobile.com"),
-    ("US", "United States", "clientbp.us.freefiremobile.com"),
-]
+def _default_keys_data():
+    return {
+        "keys": {
+            "RAHIM-VIP-4": {
+                "max_users": 4,
+                "used_users": [],
+                "generations_used": 0,
+                "active": True,
+                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        }
+    }
+
+
+def load_keys_data():
+    with _keys_lock:
+        if not os.path.exists(KEYS_FILE):
+            data = _default_keys_data()
+            save_keys_data_unlocked(data)
+            return data
+        try:
+            with open(KEYS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, dict) or not isinstance(data.get("keys"), dict):
+                data = _default_keys_data()
+            return data
+        except Exception:
+            return _default_keys_data()
+
+
+def save_keys_data_unlocked(data):
+    with open(KEYS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def save_keys_data(data):
+    with _keys_lock:
+        save_keys_data_unlocked(data)
+
+
+def get_client_fingerprint():
+    ua = request.headers.get("User-Agent", "")
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")
+    first_ip = ip.split(",")[0].strip()
+    raw = f"{first_ip}|{ua}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def current_session_info():
+    role = session.get("role")
+    if role == "owner":
+        return {"authenticated": True, "role": "owner", "label": OWNER_USERNAME}
+    if role == "user":
+        code = (session.get("access_key") or "").strip().upper()
+        data = load_keys_data()
+        entry = data["keys"].get(code)
+        if entry and entry.get("active", True):
+            max_u = int(entry.get("max_users", 1))
+            used_u = entry.get("used_users") or []
+            return {
+                "authenticated": True,
+                "role": "user",
+                "access_key": code,
+                "max_users": max_u,
+                "current_users": len(used_u),
+                "remaining_slots": max(0, max_u - len(used_u)),
+                "generations_used": int(entry.get("generations_used", 0)),
+            }
+        session.clear()
+    return {"authenticated": False, "role": None}
+
 
 XOR_KEY = [
     0x30, 0x30, 0x30, 0x32, 0x30, 0x31, 0x37, 0x30, 0x30, 0x30, 0x30, 0x30, 0x32, 0x30, 0x31, 0x37,
@@ -109,15 +176,11 @@ FIELD_22_HEX = (
     "fbe3fcc279c6147c5bf91cd43cdc9704236"
 )
 
-_used_names = set()
-_used_lock = threading.Lock()
-
 
 def sanitize_base_name(raw_name):
     cleaned = "".join(ch for ch in str(raw_name or "").strip() if ch.isalnum())
     if not cleaned:
         cleaned = "RAHIM"
-    # Ø¥Ø¨ÙØ§Ø¡ ÙØ³Ø§Ø­Ø© ÙØ§ÙÙØ© ÙÙØ£Ø±ÙØ§Ù Ø¨Ø­ÙØ« ÙØ§ ÙØªØ¬Ø§ÙØ² Ø§ÙØ·ÙÙ Ø§ÙÙÙÙ 12 Ø­Ø±ÙØ§Ù
     return cleaned[:9]
 
 
@@ -188,7 +251,6 @@ def retry_step(func, retries=3, delay=1.2, backoff=2.0):
             msg = str(e)
             if "429" in msg:
                 wait = random.uniform(1.5, 3.0) if _proxy_list else random.uniform(8.0, 14.0)
-                print(f"[RATE_LIMIT] 429 hit, sleeping {wait:.1f}s (attempt {attempt}/{retries})", flush=True)
                 time.sleep(wait)
             elif attempt < retries:
                 time.sleep(delay * (backoff ** (attempt - 1)))
@@ -511,31 +573,170 @@ def generate_one_backend(region, base_name="RAHIM", retries=3):
         }
 
     except Exception as e:
-        err_msg = f"{type(e).__name__}: {e}"
-        print(f"[GEN_ERROR] region={region} -> {err_msg}", flush=True)
-        return {"ok": False, "error": err_msg}
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
 
 @app.route('/')
 def home():
     if os.path.exists(os.path.join(TEMPLATE_DIR, 'index.html')):
         return render_template('index.html')
-    root_index = os.path.join(BASE_DIR, 'index.html')
-    if os.path.exists(root_index):
-        with open(root_index, 'r', encoding='utf-8') as f:
-            return f.read()
     return "Error: index.html not found.", 404
 
 
 @app.route('/health')
 def health():
-    return jsonify({"status": "ok", "proxies_loaded": len(_proxy_list)}), 200
+    return jsonify({"status": "ok"}), 200
+
+
+@app.route('/api/session', methods=['GET'])
+def api_session():
+    return jsonify(current_session_info())
+
+
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    payload = request.get_json(silent=True) or {}
+    mode = str(payload.get("mode", "key")).lower()
+
+    if mode == "owner":
+        username = str(payload.get("username", "")).strip()
+        password = str(payload.get("password", ""))
+        if username == OWNER_USERNAME and password == OWNER_PASSWORD:
+            session.clear()
+            session["role"] = "owner"
+            return jsonify({"ok": True, "session": current_session_info()})
+        return jsonify({"ok": False, "error": "بيانات دخول المالك غير صحيحة."}), 401
+
+    code = str(payload.get("key", "")).strip().upper()
+    if not code:
+        return jsonify({"ok": False, "error": "أدخل كلمة السر / المفتاح أولاً."}), 400
+
+    fp = get_client_fingerprint()
+    with _keys_lock:
+        data = load_keys_data()
+        entry = data["keys"].get(code)
+        if not entry or not entry.get("active", True):
+            return jsonify({"ok": False, "error": "كلمة السر غير صالحة أو متوقفة."}), 403
+
+        max_users = max(1, int(entry.get("max_users", 1)))
+        used_users = list(entry.get("used_users") or [])
+        if fp not in used_users:
+            if len(used_users) >= max_users:
+                return jsonify({"ok": False, "error": f"اكتمل العدد المسموح لهذه الكلمة ({max_users} أشخاص)."}), 403
+            used_users.append(fp)
+            entry["used_users"] = used_users
+            save_keys_data_unlocked(data)
+
+    session.clear()
+    session["role"] = "user"
+    session["access_key"] = code
+    return jsonify({"ok": True, "session": current_session_info()})
+
+
+@app.route('/api/logout', methods=['POST'])
+def api_logout():
+    session.clear()
+    return jsonify({"ok": True, "session": current_session_info()})
+
+
+@app.route('/api/owner/keys', methods=['GET'])
+def api_owner_list_keys():
+    info = current_session_info()
+    if info.get("role") != "owner":
+        return jsonify({"ok": False, "error": "صلاحية المالك مطلوبة."}), 403
+
+    data = load_keys_data()
+    items = []
+    for k, v in data["keys"].items():
+        used = v.get("used_users") or []
+        max_u = int(v.get("max_users", 1))
+        items.append({
+            "key": k,
+            "max_users": max_u,
+            "current_users": len(used),
+            "remaining": max(0, max_u - len(used)),
+            "generations_used": int(v.get("generations_used", 0)),
+            "active": bool(v.get("active", True)),
+            "created_at": v.get("created_at", ""),
+        })
+    items.sort(key=lambda x: x["created_at"], reverse=True)
+    return jsonify({"ok": True, "keys": items})
+
+
+@app.route('/api/owner/keys/create', methods=['POST'])
+def api_owner_create_key():
+    info = current_session_info()
+    if info.get("role") != "owner":
+        return jsonify({"ok": False, "error": "صلاحية المالك مطلوبة."}), 403
+
+    payload = request.get_json(silent=True) or {}
+    custom_key = "".join(ch for ch in str(payload.get("key", "")).strip().upper() if ch.isalnum() or ch in "-_")
+    try:
+        max_users = max(1, min(500, int(payload.get("max_users", 4))))
+    except Exception:
+        max_users = 4
+
+    if not custom_key:
+        suffix = "".join(random.choices("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", k=6))
+        custom_key = f"KEY-{max_users}U-{suffix}"
+
+    with _keys_lock:
+        data = load_keys_data()
+        if custom_key in data["keys"]:
+            return jsonify({"ok": False, "error": "كلمة السر هذه موجودة مسبقاً."}), 400
+        data["keys"][custom_key] = {
+            "max_users": max_users,
+            "used_users": [],
+            "generations_used": 0,
+            "active": True,
+            "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        save_keys_data_unlocked(data)
+
+    return jsonify({"ok": True, "key": custom_key, "max_users": max_users})
+
+
+@app.route('/api/owner/keys/toggle', methods=['POST'])
+def api_owner_toggle_key():
+    info = current_session_info()
+    if info.get("role") != "owner":
+        return jsonify({"ok": False, "error": "صلاحية المالك مطلوبة."}), 403
+
+    payload = request.get_json(silent=True) or {}
+    code = str(payload.get("key", "")).strip().upper()
+    with _keys_lock:
+        data = load_keys_data()
+        if code not in data["keys"]:
+            return jsonify({"ok": False, "error": "الكلمة غير موجودة."}), 404
+        data["keys"][code]["active"] = not bool(data["keys"][code].get("active", True))
+        save_keys_data_unlocked(data)
+    return jsonify({"ok": True})
+
+
+@app.route('/api/owner/keys/delete', methods=['POST'])
+def api_owner_delete_key():
+    info = current_session_info()
+    if info.get("role") != "owner":
+        return jsonify({"ok": False, "error": "صلاحية المالك مطلوبة."}), 403
+
+    payload = request.get_json(silent=True) or {}
+    code = str(payload.get("key", "")).strip().upper()
+    with _keys_lock:
+        data = load_keys_data()
+        if code in data["keys"]:
+            del data["keys"][code]
+            save_keys_data_unlocked(data)
+    return jsonify({"ok": True})
 
 
 @app.route('/api/generate', methods=['POST'])
 def generate():
+    info = current_session_info()
+    if not info.get("authenticated"):
+        return jsonify({"success": False, "error": "يجب تسجيل الدخول بكلمة سر أو حساب المالك أولاً."}), 401
+
     data = request.get_json(silent=True) or {}
-    region = str(data.get('region', 'IND')).upper()
+    region = str(data.get('region', 'ME')).upper()
     base_name = sanitize_base_name(data.get('base_name', 'RAHIM'))
     try:
         count = max(1, min(100, int(data.get('count', 1))))
@@ -554,17 +755,26 @@ def generate():
             elif res:
                 errors.append(res.get("error", "Unknown error"))
 
+    if info.get("role") == "user" and accounts:
+        code = info.get("access_key")
+        with _keys_lock:
+            kdata = load_keys_data()
+            if code in kdata["keys"]:
+                kdata["keys"][code]["generations_used"] = int(kdata["keys"][code].get("generations_used", 0)) + len(accounts)
+                save_keys_data_unlocked(kdata)
+
     return jsonify({
         "success": len(accounts) > 0,
         "requested": count,
         "generated_count": len(accounts),
         "accounts": accounts,
-        "errors": errors
+        "errors": errors,
+        "session": current_session_info(),
     })
 
 
 if __name__ == '__main__':
     load_proxies()
+    load_keys_data()
     port = int(os.environ.get("PORT", 8080))
-    print(f"Server running on 0.0.0.0:{port}", flush=True)
     app.run(host="0.0.0.0", port=port, debug=False)
