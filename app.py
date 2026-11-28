@@ -78,7 +78,7 @@ def assemble_proto(fields):
  data = bytearray()
  for k, v in fields.items():
      if isinstance(v, int):
-         data.extend(write_varint_field(k, v))
+         data.extend(write_varint((k << 3) | 0) + write_varint(v))
  elif isinstance(v, str):
      data.extend(write_string_field(k, v))
  elif isinstance(v, bytes):
