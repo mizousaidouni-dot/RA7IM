@@ -65,7 +65,9 @@ def write_varint(value: int) -> bytes:
      out.append((value & 0x7F) | 0x80)
      value >>= 7
      out.append(value)
-     return bytes(out)
+     if out:
+         return bytes(out)
+         return bytes([value])
 
 def write_string_field(f, v):
  b = v.encode("utf-8") if isinstance(v, str) else v
@@ -75,15 +77,15 @@ def write_bytes_field(f, v):
  return write_varint((f << 3) | 2) + write_varint(len(v)) + v
 
 def assemble_proto(fields):
-    data = bytearray()
-    for k, v in fields.items():
-        if isinstance(v, int):
-            data.extend(write_varint((k << 3) | 0) + write_varint(v))
-        elif isinstance(v, str):
-            data.extend(write_string_field(k, v))
-        elif isinstance(v, bytes):
-            data.extend(write_bytes_field(k, v))
-    return bytes(data)
+ data = bytearray()
+ for k, v in fields.items():
+     if isinstance(v, int):
+         data.extend(write_varint((k << 3) | 0) + write_varint(v))
+ elif isinstance(v, str):
+     data.extend(write_string_field(k, v))
+ elif isinstance(v, bytes):
+     data.extend(write_bytes_field(k, v))
+     return bytes(data)
 
 def read_varint(data, offset):
  r, s = 0, 0
@@ -97,34 +99,34 @@ def read_varint(data, offset):
          return r, offset
 
 def parse_proto(data):
-    out = {}
-    off = 0
-    while off < len(data):
-        try:
-            tag, off = read_varint(data, off)
-        except Exception:
-            break
-        f = tag >> 3
-        w = tag & 0x7
-        if f == 0:
-            break
-        try:
-            if w == 0:
-                v, off = read_varint(data, off)
-                out[f] = v
-            elif w == 2:
-                ln, off = read_varint(data, off)
-                val = data[off:off + ln]
-                off += ln
-                try:
-                    out[f] = val.decode("utf-8")
-                except Exception:
-                    out[f] = val.hex()
-            else:
-                break
-        except Exception:
-            break
-    return out
+ out = {}
+ off = 0
+ while off < len(data):
+     try:
+         tag, off = read_varint(data, off)
+ except Exception:
+     break
+     f = tag >> 3
+     w = tag & 0x7
+     if f == 0:
+         break
+         try:
+             if w == 0:
+                 v, off = read_varint(data, off)
+                 out[f] = v
+ elif w == 2:
+     ln, off = read_varint(data, off)
+     val = data[off:off + ln]
+     off += ln
+     try:
+         out[f] = val.decode("utf-8")
+ except Exception:
+     out[f] = val.hex()
+ else:
+     break
+ except Exception:
+     break
+     return out
 
 # Constants
 AES_KEY = bytes([89, 103, 38, 116, 99, 37, 68, 69, 117, 104, 54, 37, 90, 99, 94, 56])
@@ -140,22 +142,21 @@ NEWBIE_URL = "https://loginbp.ppmainecoonghj.com/ChooseNewbieChoice"
 MAJOR_LOGIN_URL = "https://loginbp.ppmainecoonghj.com/MajorLogin"
 
 def aes_encrypt(plain):
-    return AES.new(AES_KEY, AES.MODE_CBC, AES_IV).encrypt(pad(plain, AES.block_size))
-
+ return AES.new(AES_KEY, AES.MODE_CBC, AES_IV).encrypt(pad(plain, AES.block_size))
 
 def aes_decrypt(ciphertext):
-    if not ciphertext or len(ciphertext) % 16 != 0:
-        return ciphertext
-    try:
-        try:
-            return unpad(
-                AES.new(AES_KEY, AES.MODE_CBC, AES_IV).decrypt(ciphertext),
-                AES.block_size,
-            )
-        except ValueError:
-            return AES.new(AES_KEY, AES.MODE_CBC, AES_IV).decrypt(ciphertext)
-    except Exception:
-        return ciphertext
+ if not ciphertext or len(ciphertext) % 16 != 0:
+     return ciphertext
+     try:
+         try:
+             return unpad(
+             AES.new(AES_KEY, AES.MODE_CBC, AES_IV).decrypt(ciphertext),
+             AES.block_size,
+             )
+ except ValueError:
+     return AES.new(AES_KEY, AES.MODE_CBC, AES_IV).decrypt(ciphertext)
+ except Exception:
+     return ciphertext
 
 # ============================================================
 # 4. Back-end Logic (The Generator)
@@ -166,7 +167,9 @@ def generate_one_backend(region):
  
  password = hashlib.sha256(os.urandom(32)).hexdigest().upper()
  uid = None
- 
+ access_token = None
+ open_id = None
+
  try:
      # Step 1: Register
      payload = {"app_id": APP_ID, "client_type": 2, "password": password, "source": 2}
@@ -180,42 +183,28 @@ def generate_one_backend(region):
      "Accept-Encoding": "gzip",
      "Authorization": f"Signature {sig}",
      }
-     r = session.post(OAUTH_REGISTER_URL, data=body, headers=headers, timeout=15)
-     if r.status_code != 200:
-         raise RuntimeError(f"HTTP {r.status_code}")
-         d = r.json()
-         if d.get("code") != 0:
-             raise RuntimeError(f"register failed: {d.get('message')}")
-             uid = str(d["data"]["uid"])
+ 
+ r = session.post(OAUTH_REGISTER_URL, data=body, headers=headers, timeout=15)
+ if r.status_code != 200:
+     raise RuntimeError(f"HTTP {r.status_code}: {r.text}")
 
-# Step 2: Token
-try:
-    # الكود السابق للسطر 192
-    pass
-except Exception as e:
-    print(f"Error: {e}")
+ d = r.json()
+ if d.get("code") != 0:
+     raise RuntimeError(f"register failed: {d.get('message')}")
+ 
+ uid = str(d["data"]["uid"])
 
-try:
-    # هذا هو الـ try الذي يبدأ عند السطر 192
-    pass
-except Exception as e:
-    print(f"Error: {e}")
-
-response = requests.post("https://example.com/auth/token", data=payload)
-print(response.status_code, response.text)
-
- headers = {
- "User-Agent": "GarenaMSDK/4.0.30",
- "Accept": "application/json",
- "Accept-Encoding": "gzip",
- "Connection": "Keep-Alive",
- }
- r = session.post(OAUTH_TOKEN_URL, data=payload, headers=headers, timeout=30)
+ # Step 2: Token
+ # Note: Payload is usually the same as register body for guest token
+ r = session.post(OAUTH_TOKEN_URL, data=body, headers=headers, timeout=30)
  d = r.json()
  access_token = d.get("access_token")
  open_id = d.get("open_id")
  
- nickname = f"YAHYA{random.randint(1, 9999)}"
+ if not access_token or not open_id:
+     raise RuntimeError("Failed to get token or open_id")
+
+ nickname = f"YAHYA{random.randint(1000, 9999)}"
  
  # Step 3: MajorRegister
  fields = {
