@@ -181,9 +181,10 @@ def generate_one_backend(region):
      "Accept-Encoding": "gzip",
      "Authorization": f"Signature {sig}",
      }
-     r = session.post(OAUTH_REGISTER_URL, data=body, headers=headers, timeout=15)
-     if r.status_code != 200:
-         raise RuntimeError(f"HTTP {r.status_code}: {r.text}")
+
+ r = session.post(OAUTH_REGISTER_URL, data=body, headers=headers, timeout=15)
+ if r.status_code != 200:
+     raise RuntimeError(f"HTTP {r.status_code}: {r.text}")
 
  d = r.json()
  if d.get("code") != 0:
