@@ -65,9 +65,7 @@ def write_varint(value: int) -> bytes:
      out.append((value & 0x7F) | 0x80)
      value >>= 7
      out.append(value)
-     if out:
-         return bytes(out)
-         return bytes([value])
+     return bytes(out)
 
 def write_string_field(f, v):
  b = v.encode("utf-8") if isinstance(v, str) else v
@@ -164,7 +162,7 @@ def aes_decrypt(ciphertext):
 def generate_one_backend(region):
  session = requests.Session()
  session.verify = False
- 
+
  password = hashlib.sha256(os.urandom(32)).hexdigest().upper()
  uid = None
  access_token = None
@@ -183,29 +181,26 @@ def generate_one_backend(region):
      "Accept-Encoding": "gzip",
      "Authorization": f"Signature {sig}",
      }
- 
- r = session.post(OAUTH_REGISTER_URL, data=body, headers=headers, timeout=15)
- if r.status_code != 200:
-     raise RuntimeError(f"HTTP {r.status_code}: {r.text}")
+     r = session.post(OAUTH_REGISTER_URL, data=body, headers=headers, timeout=15)
+     if r.status_code != 200:
+         raise RuntimeError(f"HTTP {r.status_code}: {r.text}")
 
  d = r.json()
  if d.get("code") != 0:
      raise RuntimeError(f"register failed: {d.get('message')}")
- 
- uid = str(d["data"]["uid"])
+     uid = str(d["data"]["uid"])
 
  # Step 2: Token
- # Note: Payload is usually the same as register body for guest token
  r = session.post(OAUTH_TOKEN_URL, data=body, headers=headers, timeout=30)
  d = r.json()
  access_token = d.get("access_token")
  open_id = d.get("open_id")
- 
+
  if not access_token or not open_id:
      raise RuntimeError("Failed to get token or open_id")
 
  nickname = f"YAHYA{random.randint(1000, 9999)}"
- 
+
  # Step 3: MajorRegister
  fields = {
  1: nickname,
@@ -237,7 +232,7 @@ def generate_one_backend(region):
  "Content-Length": str(len(encrypted)),
  }
  r = session.post(MAJOR_REGISTER_URL, data=encrypted, headers=headers, timeout=30)
- 
+
  # Step 4: Newbie
  plain_newbie = assemble_proto({1: 12345678, 2: 1, 3: 3})
  encrypted_newbie = aes_encrypt(plain_newbie)
@@ -255,7 +250,7 @@ def generate_one_backend(region):
  "Content-Length": str(len(encrypted_newbie)),
  }
  session.post(NEWBIE_URL, headers=headers, data=encrypted_newbie, timeout=30)
- 
+
  # Step 5: MajorLogin (Extract JWT)
  fields_login = {
  3: time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -292,14 +287,14 @@ def generate_one_backend(region):
  }
  encrypted_login = aes_encrypt(assemble_proto(fields_login))
  r = session.post(MAJOR_LOGIN_URL, data=encrypted_login, headers=headers, timeout=30)
- 
+
  raw = r.content
  decrypted = aes_decrypt(raw)
  parsed = parse_proto(decrypted)
  jwt = parsed.get(8)
  if isinstance(jwt, bytes):
      jwt = jwt.decode("utf-8", "ignore")
- 
+
  return {
  "uid": uid,
  "password": password,
@@ -312,7 +307,7 @@ def generate_one_backend(region):
  "session_key": "0x" + str(hashlib.sha256(open_id.encode()).hexdigest()[:16]),
  "session_iv": "0x" + str(hashlib.sha256(open_id.encode()).hexdigest()[:16]),
  }
- 
+
  except Exception as e:
      return None
 
@@ -328,7 +323,7 @@ def generate():
  data = request.json
  region = data.get('region', 'IND')
  count = int(data.get('count', 1))
- 
+
  result = []
  with ThreadPoolExecutor(max_workers=5) as executor:
      futures = [executor.submit(generate_one_backend, region) for _ in range(count)]
@@ -336,7 +331,7 @@ def generate():
          acc = future.result()
          if acc:
              result.append(acc)
- 
+
  return jsonify({"success": True, "accounts": result})
 
 if __name__ == '__main__':
