@@ -113,25 +113,18 @@ def parse_proto(data):
                 v, off = read_varint(data, off)
                 out[f] = v
             elif w == 2:
-                length, off = read_varint(data, off)
-                out[f] = data[off:off + length]
-                off += length
+                ln, off = read_varint(data, off)
+                val = data[off:off + ln]
+                off += ln
+                try:
+                    out[f] = val.decode("utf-8")
+                except Exception:
+                    out[f] = val.hex()
             else:
                 break
         except Exception:
             break
     return out
- elif w == 2:
-     ln, off = read_varint(data, off)
-     val = data[off:off + ln]
-     off += ln
-     try:
-         out[f] = val.decode("utf-8")
- except Exception:
-     out[f] = val.hex()
- except Exception:
-     break
-     return out
 
 # Constants
 AES_KEY = bytes([89, 103, 38, 116, 99, 37, 68, 69, 117, 104, 54, 37, 90, 99, 94, 56])
