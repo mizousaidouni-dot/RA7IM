@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WormGPT v5.2 - FF Account Generator</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-main: #090b12;
+      --bg-card: #121624;
+      --bg-input: #0b0e17;
+      --border: #1f263b;
+      --accent: #7c4dff;
+      --accent-hover: #651fff;
+      --accent-glow: rgba(124, 77, 255, 0.25);
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --success: #10b981;
+      --error: #ef4444;
+      --warning: #f59e0b;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Cairo', sans-serif;
+    }
+
+    body {
+      background: radial-gradient(circle at top right, #171c33 0%, var(--bg-main) 55%);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .navbar {
+      background: rgba(18, 22, 36, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 0;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .nav-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      font-size: 1.4rem;
+      font-weight: 800;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo i {
+      color: var(--accent);
+      font-size: 1.6rem;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: var(--success);
+      padding: 0.35rem 0.85rem;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+    }
+
+    .main-wrapper {
+      max-width: 1200px;
+      width: 100%;
+      margin: 2rem auto;
+      padding: 0 1.5rem;
+      flex: 1;
+    }
+
+    .grid-layout {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 1.75rem;
+      align-items: start;
+    }
+
+    @media (max-width: 900px) {
+      .grid-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.75rem;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+    }
+
+    .panel-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #fff;
+    }
+
+    .panel-title i {
+      color: var(--accent);
+    }
+
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: var(--text-secondary);
+      font-size: 0.92rem;
+      font-weight: 600;
+    }
+
+    .form-control {
+      width: 100%;
+      padding: 0.8rem 1rem;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text-primary);
+      font-size: 0.95rem;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .form-control:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .btn {
+      padding: 0.85rem 1.25rem;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 0.95rem;
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent) 0%, #5e35b1 100%);
+      color: #fff;
+      width: 100%;
+      box-shadow: 0 6px 20px var(--accent-glow);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-1px);
+      background: linear-gradient(135deg, var(--accent-hover) 0%, #512da8 100%);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .btn-secondary {
+      background: #1a2035;
+      color: #e2e8f0;
+      border: 1px solid var(--border);
+      padding: 0.55rem 0.95rem;
+      font-size: 0.85rem;
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: #232b47;
+      border-color: var(--accent);
+    }
+
+    .btn-secondary:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .btn-success {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--success);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      padding: 0.55rem 0.95rem;
+      font-size: 0.85rem;
+    }
+
+    .btn-success:hover:not(:disabled) {
+      background: rgba(16, 185, 129, 0.25);
+    }
+
+    .btn-success:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .log-box {
+      background: #06080f;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.9rem 1rem;
+      height: 155px;
+      overflow-y: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      direction: ltr;
+      text-align: left;
+      margin-bottom: 1.5rem;
+      line-height: 1.55;
+    }
+
+    .log-info { color: #38bdf8; }
+    .log-ok { color: #10b981; }
+    .log-err { color: #f87171; }
+
+    .account-card {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.2rem;
+      margin-bottom: 1rem;
+      transition: border-color 0.2s;
+    }
+
+    .account-card:hover {
+      border-color: rgba(124, 77, 255, 0.5);
+    }
+
+    .acc-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      padding-bottom: 0.85rem;
+      margin-bottom: 0.85rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .acc-name {
+      font-weight: 800;
+      font-size: 1.05rem;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .region-tag {
+      background: rgba(124, 77, 255, 0.18);
+      color: #b39ddb;
+      padding: 0.15rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .acc-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+    }
+
+    .mini-btn {
+      background: #171c2e;
+      color: #cbd5e1;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 0.35rem 0.65rem;
+      font-size: 0.78rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s;
+    }
+
+    .mini-btn:hover {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    .fields-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.55rem;
+      direction: ltr;
+      text-align: left;
+    }
+
+    .field-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #080a11;
+      border: 1px solid #181e30;
+      border-radius: 8px;
+      padding: 0.45rem 0.75rem;
+      gap: 0.75rem;
+    }
+
+    .field-label {
+      color: var(--text-secondary);
+      font-size: 0.78rem;
+      font-weight: 600;
+      min-width: 95px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .field-val {
+      color: #e2e8f0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 24px;
+      background: #1e293b;
+      color: #fff;
+      border: 1px solid var(--accent);
+      padding: 0.75rem 1.2rem;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.45);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      opacity: 0;
+      transform: translateY(15px);
+      pointer-events: none;
+      transition: all 0.25s ease;
+      z-index: 999;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 2.5rem 1rem;
+      color: var(--text-secondary);
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+    }
+
+    .empty-state i {
+      font-size: 2.2rem;
+      color: #334155;
+      margin-bottom: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="navbar">
+    <div class="nav-container">
+      <div class="logo">
+        <i class="fa-solid fa-bolt"></i>
+        <span>WormGPT v5.2</span>
+      </div>
+      <div class="status-badge" id="server-status">
+        <span class="status-dot"></span>
+        <span>متصل بالخادم</span>
+      </div>
+    </div>
+  </nav>
+
+  <main class="main-wrapper">
+    <div class="grid-layout">
+      <!-- لوحة الإعدادات -->
+      <section class="panel">
+        <div class="panel-title">
+          <i class="fa-solid fa-sliders"></i>
+          <span>إعدادات التوليد</span>
+        </div>
+
+        <div class="form-group">
+          <label for="server-select">اختر السيرفر (Region)</label>
+          <select id="server-select" class="form-control">
+            <option value="ME">Middle East (الشرق الأوسط)</option>
+            <option value="IND">India (الهند)</option>
+            <option value="BD">Bangladesh (بنغلاديش)</option>
+            <option value="SG">Singapore (سنغافورة)</option>
+            <option value="ID">Indonesia (إندونيسيا)</option>
+            <option value="TH">Thailand (تايلاند)</option>
+            <option value="PK">Pakistan (باكستان)</option>
+            <option value="VN">Vietnam (فيتنام)</option>
+            <option value="BR">Brazil (البرازيل)</option>
+            <option value="US">United States (أمريكا)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="account-count">عدد الحسابات (1 - 10)</label>
+          <input type="number" id="account-count" class="form-control" value="1" min="1" max="10">
+        </div>
+
+        <button id="start-btn" class="btn btn-primary" onclick="startGeneration()">
+          <i class="fa-solid fa-play"></i>
+          <span>بدء التوليد الآن</span>
+        </button>
+      </section>
+
+      <!-- لوحة النتائج والسجل -->
+      <section class="panel">
+        <div class="panel-title">
+          <i class="fa-solid fa-terminal"></i>
+          <span>السجل والنتائج</span>
+        </div>
+
+        <div class="toolbar">
+          <button id="copy-all-btn" class="btn btn-secondary" onclick="copyAllJson()" disabled>
+            <i class="fa-regular fa-copy"></i>
+            <span>نسخ الكل (JSON)</span>
+          </button>
+          <button id="download-json-btn" class="btn btn-success" onclick="downloadJsonFile()" disabled>
+            <i class="fa-solid fa-file-arrow-down"></i>
+            <span>تحميل ملف JSON</span>
+          </button>
+          <button id="clear-btn" class="btn btn-secondary" onclick="clearResults()">
+            <i class="fa-solid fa-trash-can"></i>
+            <span>مسح</span>
+          </button>
+        </div>
+
+        <div class="log-box" id="log-window">
+          <div class="log-info">[SYSTEM] Ready. Select region and click Start Generation.</div>
+        </div>
+
+        <div id="account-list">
+          <div class="empty-state">
+            <i class="fa-solid fa-layer-group"></i>
+            <div>لا توجد حسابات مولّدة بعد</div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div class="toast" id="toast">
+    <i class="fa-solid fa-circle-check" style="color: var(--success);"></i>
+    <span id="toast-msg">تم النسخ بنجاح</span>
+  </div>
+
+  <script>
+    let generatedAccounts = [];
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-msg').textContent = message;
+      toast.classList.add('show');
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => {
+        toast.classList.remove('show');
+      }, 2400);
+    }
+
+    function appendLog(text, type = 'info') {
+      const log = document.getElementById('log-window');
+      const div = document.createElement('div');
+      div.className = 'log-' + type;
+      div.textContent = text;
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    async function copyText(text, label = 'النص') {
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast('تم نسخ ' + label + ' بنجاح');
+      } catch (e) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('تم نسخ ' + label + ' بنجاح');
+      }
+    }
+
+    function copyAccountJson(index) {
+      const acc = generatedAccounts[index];
+      if (!acc) return;
+      copyText(JSON.stringify(acc, null, 2), 'بيانات JSON للحساب');
+    }
+
+    function downloadSingleJson(index) {
+      const acc = generatedAccounts[index];
+      if (!acc) return;
+      const blob = new Blob([JSON.stringify(acc, null, 2)], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `account_${acc.uid || index + 1}_${acc.region || 'FF'}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('تم تحميل ملف الحساب بصيغة JSON');
+    }
+
+    function copyAllJson() {
+      if (!generatedAccounts.length) return;
+      copyText(JSON.stringify(generatedAccounts, null, 2), 'جميع الحسابات (JSON)');
+    }
+
+    function downloadJsonFile() {
+      if (!generatedAccounts.length) return;
+      const region = document.getElementById('server-select').value;
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const blob = new Blob([JSON.stringify(generatedAccounts, null, 2)], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `accounts_${region}_${timestamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('تم تحميل ملف JSON بنجاح');
+    }
+
+    function clearResults() {
+      generatedAccounts = [];
+      document.getElementById('copy-all-btn').disabled = true;
+      document.getElementById('download-json-btn').disabled = true;
+      document.getElementById('account-list').innerHTML = `
+        <div class="empty-state">
+          <i class="fa-solid fa-layer-group"></i>
+          <div>لا توجد حسابات مولّدة بعد</div>
+        </div>
+      `;
+      document.getElementById('log-window').innerHTML = '<div class="log-info">[SYSTEM] Cleared.</div>';
+    }
+
+    function escapeHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function renderAccounts() {
+      const list = document.getElementById('account-list');
+      list.innerHTML = '';
+
+      generatedAccounts.forEach((acc, idx) => {
+        const card = document.createElement('div');
+        card.className = 'account-card';
+        card.innerHTML = `
+          <div class="acc-top">
+            <div class="acc-name">
+              <i class="fa-solid fa-user-shield" style="color: var(--accent);"></i>
+              <span>${escapeHtml(acc.nickname)}</span>
+              <span class="region-tag">${escapeHtml(acc.region)}</span>
+            </div>
+            <div class="acc-actions">
+              <button class="mini-btn" onclick="copyText('${escapeHtml(acc.uid)}', 'UID')">
+                <i class="fa-regular fa-copy"></i> UID
+              </button>
+              <button class="mini-btn" onclick="copyText('${escapeHtml(acc.password)}', 'كلمة المرور')">
+                <i class="fa-solid fa-key"></i> Pass
+              </button>
+              <button class="mini-btn" onclick="copyAccountJson(${idx})">
+                <i class="fa-solid fa-code"></i> JSON
+              </button>
+              <button class="mini-btn" onclick="downloadSingleJson(${idx})">
+                <i class="fa-solid fa-download"></i> تحميل
+              </button>
+            </div>
+          </div>
+          <div class="fields-grid">
+            <div class="field-row">
+              <span class="field-label">UID</span>
+              <span class="field-val">${escapeHtml(acc.uid)}</span>
+              <button class="mini-btn" onclick="copyText('${escapeHtml(acc.uid)}', 'UID')"><i class="fa-regular fa-copy"></i></button>
+            </div>
+            <div class="field-row">
+              <span class="field-label">PASSWORD</span>
+              <span class="field-val">${escapeHtml(acc.password)}</span>
+              <button class="mini-btn" onclick="copyText('${escapeHtml(acc.password)}', 'Password')"><i class="fa-regular fa-copy"></i></button>
+            </div>
+            <div class="field-row">
+              <span class="field-label">OPEN_ID</span>
+              <span class="field-val">${escapeHtml(acc.open_id)}</span>
+              <button class="mini-btn" onclick="copyText('${escapeHtml(acc.open_id)}', 'Open ID')"><i class="fa-regular fa-copy"></i></button>
+            </div>
+            <div class="field-row">
+              <span class="field-label">TOKEN</span>
+              <span class="field-val">${escapeHtml(acc.access_token)}</span>
+              <button class="mini-btn" onclick="copyText('${escapeHtml(acc.access_token)}', 'Access Token')"><i class="fa-regular fa-copy"></i></button>
+            </div>
+            ${acc.jwt ? `
+            <div class="field-row">
+              <span class="field-label">JWT</span>
+              <span class="field-val">${escapeHtml(acc.jwt)}</span>
+              <button class="mini-btn" onclick="copyText('${escapeHtml(acc.jwt)}', 'JWT')"><i class="fa-regular fa-copy"></i></button>
+            </div>` : ''}
+          </div>
+        `;
+        list.appendChild(card);
+      });
+    }
+
+    async function startGeneration() {
+      const region = document.getElementById('server-select').value;
+      const count = parseInt(document.getElementById('account-count').value, 10) || 1;
+      const btn = document.getElementById('start-btn');
+
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>جاري التوليد...</span>';
+      appendLog(`[SYSTEM] Sending request (region=${region}, count=${count})...`, 'info');
+
+      try {
+        const response = await fetch('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ region, count })
+        });
+
+        const data = await response.json();
+
+        if (data.accounts && data.accounts.length > 0) {
+          generatedAccounts = generatedAccounts.concat(data.accounts);
+          renderAccounts();
+          document.getElementById('copy-all-btn').disabled = false;
+          document.getElementById('download-json-btn').disabled = false;
+          appendLog(`[SUCCESS] Generated ${data.accounts.length} account(s).`, 'ok');
+          showToast(`تم توليد ${data.accounts.length} حساب بنجاح`);
+        }
+
+        if (data.errors && data.errors.length > 0) {
+          data.errors.forEach(err => appendLog(`[ERROR] ${err}`, 'err'));
+        } else if (!data.accounts || data.accounts.length === 0) {
+          appendLog('[ERROR] Failed to generate accounts (no response data).', 'err');
+        }
+      } catch (err) {
+        appendLog(`[ERROR] Connection failed: ${err.message}`, 'err');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-play"></i> <span>بدء التوليد الآن</span>';
+      }
+    }
+  </script>
+</body>
+</html>
