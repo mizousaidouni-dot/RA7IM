@@ -75,15 +75,15 @@ def write_bytes_field(f, v):
  return write_varint((f << 3) | 2) + write_varint(len(v)) + v
 
 def assemble_proto(fields):
- data = bytearray()
- for k, v in fields.items():
-     if isinstance(v, int):
-         data.extend(write_varint((k << 3) | 0) + write_varint(v))
- elif isinstance(v, str):
-     data.extend(write_string_field(k, v))
- elif isinstance(v, bytes):
-     data.extend(write_bytes_field(k, v))
-     return bytes(data)
+data = bytearray()
+for k, v in fields.items():
+    if isinstance(v, int):
+        data.extend(write_varint((k << 3) | 0) + write_varint(v))
+    elif isinstance(v, str):
+        data.extend(write_string_field(k, v))
+    elif isinstance(v, bytes):
+        data.extend(write_bytes_field(k, v))
+return bytes(data)
 
 def read_varint(data, offset):
  r, s = 0, 0
