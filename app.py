@@ -9,17 +9,18 @@ import threading
 import itertools
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import requests
+import urllib.request
+import urllib.error
+import ssl
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
-import urllib3
 from flask import Flask, render_template, jsonify, request
 
 # --- إعداد الواجهة ---
 app = Flask(__name__, template_folder='templates')
 
-# --- تحميل مكتبة urllib3 وتعطيل التنبيهات ---
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+# --- تعطيل التحقق من شهادات SSL للطلبات ---
+SSL_CONTEXT = ssl._create_unverified_context()
 
 # ============================================================
 # 1. Rate Limiter (الحد من الطلبات)
@@ -58,8 +59,32 @@ SERVERS = [
 ]
 
 # ============================================================
-# 3. Utils (Proto, AES, etc)
+# 3. Utils (Proto, AES, HTTP Helper, etc)
 # ============================================================
+class SimpleResponse:
+    def __init__(self, status_code, content):
+        self.status_code = status_code
+        self.content = content
+        self.text = content.decode("utf-8", errors="ignore")
+
+    def json(self):
+        return json.loads(self.text)
+
+
+def http_post(url, data=None, headers=None, timeout=30):
+    if isinstance(data, str):
+        data = data.encode("utf-8")
+    req_headers = dict(headers or {})
+    # إزالة Accept-Encoding لتجنب استلام بيانات مضغوطة بـ gzip/deflate بدون فك ضغطها
+    req_headers.pop("Accept-Encoding", None)
+    req = urllib.request.Request(url, data=data, headers=req_headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout, context=SSL_CONTEXT) as resp:
+            return SimpleResponse(resp.getcode(), resp.read())
+    except urllib.error.HTTPError as e:
+        return SimpleResponse(e.code, e.read())
+
+
 def write_varint(value: int) -> bytes:
     out = []
     while value > 127:
@@ -174,9 +199,6 @@ def aes_decrypt(ciphertext):
 # 4. Back-end Logic (The Generator)
 # ============================================================
 def generate_one_backend(region):
-    session = requests.Session()
-    session.verify = False
-
     password = hashlib.sha256(os.urandom(32)).hexdigest().upper()
     uid = None
     access_token = None
@@ -192,11 +214,10 @@ def generate_one_backend(region):
             "Accept": "application/json",
             "Content-Type": "application/json; charset=utf-8",
             "Connection": "Keep-Alive",
-            "Accept-Encoding": "gzip",
             "Authorization": f"Signature {sig}",
         }
 
-        r = session.post(OAUTH_REGISTER_URL, data=body, headers=headers, timeout=15)
+        r = http_post(OAUTH_REGISTER_URL, data=body, headers=headers, timeout=15)
         if r.status_code != 200:
             raise RuntimeError(f"HTTP {r.status_code}: {r.text}")
 
@@ -206,7 +227,7 @@ def generate_one_backend(region):
         uid = str(d["data"]["uid"])
 
         # Step 2: Token
-        r = session.post(OAUTH_TOKEN_URL, data=body, headers=headers, timeout=30)
+        r = http_post(OAUTH_TOKEN_URL, data=body, headers=headers, timeout=30)
         d = r.json()
         access_token = d.get("access_token")
         open_id = d.get("open_id")
@@ -237,7 +258,6 @@ def generate_one_backend(region):
             "Host": "loginbp.ppmainecoonghj.com",
             "User-Agent": "UnityPlayer/2018.4.12f1 (UnityWebRequest/1.0, libcurl/8.5.0-DEV)",
             "Accept": "*/*",
-            "Accept-Encoding": "deflate, gzip",
             "X-GA-SV": str(int(time.time())),
             "Authorization": "Bearer",
             "X-GA": "v1 1",
@@ -246,7 +266,7 @@ def generate_one_backend(region):
             "X-Unity-Version": "2018.4.12f1",
             "Content-Length": str(len(encrypted)),
         }
-        r = session.post(MAJOR_REGISTER_URL, data=encrypted, headers=headers, timeout=30)
+        r = http_post(MAJOR_REGISTER_URL, data=encrypted, headers=headers, timeout=30)
 
         # Step 4: Newbie
         plain_newbie = assemble_proto({1: 12345678, 2: 1, 3: 3})
@@ -255,7 +275,6 @@ def generate_one_backend(region):
             "Host": "loginbp.ppmainecoonghj.com",
             "User-Agent": "UnityPlayer/2018.4.12f1 (UnityWebRequest/1.0, libcurl/8.5.0-DEV)",
             "Accept": "*/*",
-            "Accept-Encoding": "deflate, gzip",
             "X-GA-SV": str(int(time.time())),
             "Authorization": "Bearer",
             "X-GA": "v1 1",
@@ -264,7 +283,7 @@ def generate_one_backend(region):
             "X-Unity-Version": "2018.4.12f1",
             "Content-Length": str(len(encrypted_newbie)),
         }
-        session.post(NEWBIE_URL, headers=headers, data=encrypted_newbie, timeout=30)
+        http_post(NEWBIE_URL, headers=headers, data=encrypted_newbie, timeout=30)
 
         # Step 5: MajorLogin (Extract JWT)
         fields_login = {
@@ -301,7 +320,7 @@ def generate_one_backend(region):
             107: "1.9393e7b8e53e8aeb",
         }
         encrypted_login = aes_encrypt(assemble_proto(fields_login))
-        r = session.post(MAJOR_LOGIN_URL, data=encrypted_login, headers=headers, timeout=30)
+        r = http_post(MAJOR_LOGIN_URL, data=encrypted_login, headers=headers, timeout=30)
 
         raw = r.content
         decrypted = aes_decrypt(raw)
