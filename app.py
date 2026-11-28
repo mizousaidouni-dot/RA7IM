@@ -109,26 +109,34 @@ FIELD_22_HEX = (
     "fbe3fcc279c6147c5bf91cd43cdc9704236"
 )
 
-_SUPERSCRIPT_MAP = {
-    "0": "â°", "1": "Â¹", "2": "Â²", "3": "Â³", "4": "â´",
-    "5": "âµ", "6": "â¶", "7": "â·", "8": "â¸", "9": "â¹",
-}
-_used_numbers = set()
+_used_names = set()
 _used_lock = threading.Lock()
 
 
-def build_nickname():
+def sanitize_base_name(raw_name):
+    cleaned = "".join(ch for ch in str(raw_name or "").strip() if ch.isalnum())
+    if not cleaned:
+        cleaned = "RAHIM"
+    # Ø¥Ø¨ÙØ§Ø¡ ÙØ³Ø§Ø­Ø© ÙØ§ÙÙØ© ÙÙØ£Ø±ÙØ§Ù Ø¨Ø­ÙØ« ÙØ§ ÙØªØ¬Ø§ÙØ² Ø§ÙØ·ÙÙ Ø§ÙÙÙÙ 12 Ø­Ø±ÙØ§Ù
+    return cleaned[:9]
+
+
+def build_nickname(base_name="RAHIM"):
+    prefix = sanitize_base_name(base_name)
+    digits_len = max(2, 12 - len(prefix))
+    low = 10 ** (digits_len - 1)
+    high = (10 ** digits_len) - 1
+
     with _used_lock:
-        if len(_used_numbers) >= 9999:
-            num = random.randint(1, 9999)
-        else:
-            while True:
-                num = random.randint(1, 9999)
-                if num not in _used_numbers:
-                    _used_numbers.add(num)
-                    break
-    sup = "".join(_SUPERSCRIPT_MAP[d] for d in str(num))
-    return f"YAHYAã¤{sup}"
+        num = random.randint(low, high)
+        candidate = f"{prefix}{num}"[:12]
+        attempts = 0
+        while candidate in _used_names and attempts < 200:
+            num = random.randint(low, high)
+            candidate = f"{prefix}{num}"[:12]
+            attempts += 1
+        _used_names.add(candidate)
+    return candidate
 
 
 def xor_open_id(open_id: str) -> bytes:
@@ -469,12 +477,12 @@ def _step5_major_login(region, access_token, open_id, game_headers):
     return jwt, session_key, session_iv
 
 
-def generate_one_backend(region, retries=3):
+def generate_one_backend(region, base_name="RAHIM", retries=3):
     password = hashlib.sha256(os.urandom(32)).hexdigest().upper()
     try:
         uid = retry_step(lambda: _step1_register(password), retries=retries)
         access_token, open_id = retry_step(lambda: _step2_token(uid, password), retries=retries)
-        nickname = build_nickname()
+        nickname = build_nickname(base_name)
         account_id, game_headers = retry_step(
             lambda: _step3_major_register(region, nickname, access_token, open_id),
             retries=retries,
@@ -528,6 +536,7 @@ def health():
 def generate():
     data = request.get_json(silent=True) or {}
     region = str(data.get('region', 'IND')).upper()
+    base_name = sanitize_base_name(data.get('base_name', 'RAHIM'))
     try:
         count = max(1, min(100, int(data.get('count', 1))))
     except Exception:
@@ -537,7 +546,7 @@ def generate():
     accounts = []
     errors = []
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(generate_one_backend, region, 3) for _ in range(count)]
+        futures = [executor.submit(generate_one_backend, region, base_name, 3) for _ in range(count)]
         for future in as_completed(futures):
             res = future.result()
             if res and res.get("ok"):
