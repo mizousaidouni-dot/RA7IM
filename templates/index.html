@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WormGPT v5.2 - FF Account Generator</title>
+  <title>WormGPT v5.2 - FF Account Generator (1-100)</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <style>
@@ -163,6 +163,38 @@
       box-shadow: 0 0 0 3px var(--accent-glow);
     }
 
+    .name-preview {
+      margin-top: 0.45rem;
+      font-size: 0.82rem;
+      color: #a5b4fc;
+      font-family: 'JetBrains Mono', monospace;
+      direction: ltr;
+      text-align: left;
+    }
+
+    .quick-presets {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.45rem;
+      margin-top: 0.55rem;
+    }
+
+    .preset-btn {
+      background: #171c2e;
+      color: #cbd5e1;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 0.35rem 0;
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .preset-btn:hover {
+      border-color: var(--accent);
+      color: #fff;
+    }
+
     .btn {
       padding: 0.85rem 1.25rem;
       border-radius: 10px;
@@ -242,7 +274,7 @@
       border: 1px solid var(--border);
       border-radius: 10px;
       padding: 0.9rem 1rem;
-      height: 155px;
+      height: 165px;
       overflow-y: auto;
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.82rem;
@@ -428,6 +460,12 @@
         </div>
 
         <div class="form-group">
+          <label for="base-name">الاسم الأساسي للحساب (بحد أقصى 9 أحرف)</label>
+          <input type="text" id="base-name" class="form-control" value="RAHIM" maxlength="9" placeholder="مثال: RAHIM" oninput="updateNamePreview()">
+          <div class="name-preview" id="name-preview">مثال الناتج: RAHIM4829103 (12 حرفاً)</div>
+        </div>
+
+        <div class="form-group">
           <label for="server-select">اختر السيرفر (Region)</label>
           <select id="server-select" class="form-control">
             <option value="ME">Middle East (الشرق الأوسط)</option>
@@ -444,8 +482,14 @@
         </div>
 
         <div class="form-group">
-          <label for="account-count">عدد الحسابات (1 - 10)</label>
-          <input type="number" id="account-count" class="form-control" value="1" min="1" max="10">
+          <label for="account-count">عدد الحسابات (1 - 100)</label>
+          <input type="number" id="account-count" class="form-control" value="1" min="1" max="100">
+          <div class="quick-presets">
+            <button type="button" class="preset-btn" onclick="setCount(1)">1</button>
+            <button type="button" class="preset-btn" onclick="setCount(10)">10</button>
+            <button type="button" class="preset-btn" onclick="setCount(50)">50</button>
+            <button type="button" class="preset-btn" onclick="setCount(100)">100</button>
+          </div>
         </div>
 
         <button id="start-btn" class="btn btn-primary" onclick="startGeneration()">
@@ -458,7 +502,7 @@
       <section class="panel">
         <div class="panel-title">
           <i class="fa-solid fa-terminal"></i>
-          <span>السجل والنتائج</span>
+          <span>السجل والنتائج (<span id="total-acc-badge">0</span>)</span>
         </div>
 
         <div class="toolbar">
@@ -477,7 +521,7 @@
         </div>
 
         <div class="log-box" id="log-window">
-          <div class="log-info">[SYSTEM] Ready. Select region and click Start Generation.</div>
+          <div class="log-info">[SYSTEM] Ready (1-100 accounts, max 12-char nickname).</div>
         </div>
 
         <div id="account-list">
@@ -497,6 +541,24 @@
 
   <script>
     let generatedAccounts = [];
+
+    function updateNamePreview() {
+      const input = document.getElementById('base-name');
+      const cleaned = input.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 9);
+      const base = cleaned || 'RAHIM';
+      const digitsNeeded = Math.max(2, 12 - base.length);
+      const sampleDigits = '482910375'.slice(0, digitsNeeded);
+      const sample = (base + sampleDigits).slice(0, 12);
+      document.getElementById('name-preview').textContent = `مثال الناتج: ${sample} (${sample.length} حرفاً)`;
+    }
+
+    function setCount(val) {
+      document.getElementById('account-count').value = val;
+    }
+
+    function updateBadge() {
+      document.getElementById('total-acc-badge').textContent = generatedAccounts.length;
+    }
 
     function showToast(message) {
       const toast = document.getElementById('toast');
@@ -576,6 +638,7 @@
 
     function clearResults() {
       generatedAccounts = [];
+      updateBadge();
       document.getElementById('copy-all-btn').disabled = true;
       document.getElementById('download-json-btn').disabled = true;
       document.getElementById('account-list').innerHTML = `
@@ -599,6 +662,7 @@
     function renderAccounts() {
       const list = document.getElementById('account-list');
       list.innerHTML = '';
+      updateBadge();
 
       generatedAccounts.forEach((acc, idx) => {
         const card = document.createElement('div');
@@ -660,18 +724,21 @@
 
     async function startGeneration() {
       const region = document.getElementById('server-select').value;
-      const count = parseInt(document.getElementById('account-count').value, 10) || 1;
-      const btn = document.getElementById('start-btn');
+      const baseName = document.getElementById('base-name').value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 9) || 'RAHIM';
+      let count = parseInt(document.getElementById('account-count').value, 10) || 1;
+      count = Math.max(1, Math.min(100, count));
+      document.getElementById('account-count').value = count;
 
+      const btn = document.getElementById('start-btn');
       btn.disabled = true;
       btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>جاري التوليد...</span>';
-      appendLog(`[SYSTEM] Sending request (region=${region}, count=${count})...`, 'info');
+      appendLog(`[SYSTEM] Sending request (region=${region}, name=${baseName}, count=${count})...`, 'info');
 
       try {
         const response = await fetch('/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ region, count })
+          body: JSON.stringify({ region, count, base_name: baseName })
         });
 
         const data = await response.json();
@@ -686,7 +753,11 @@
         }
 
         if (data.errors && data.errors.length > 0) {
-          data.errors.forEach(err => appendLog(`[ERROR] ${err}`, 'err'));
+          const uniqueErrors = [...new Set(data.errors)];
+          uniqueErrors.slice(0, 8).forEach(err => appendLog(`[ERROR] ${err}`, 'err'));
+          if (data.errors.length > 8) {
+            appendLog(`[ERROR] ...and ${data.errors.length - 8} more error(s).`, 'err');
+          }
         } else if (!data.accounts || data.accounts.length === 0) {
           appendLog('[ERROR] Failed to generate accounts (no response data).', 'err');
         }
