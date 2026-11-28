@@ -18,7 +18,6 @@
       --muted: #94a3b8;
       --ok: #10b981;
       --err: #ef4444;
-      --warn: #f59e0b;
     }
 
     * {
@@ -100,6 +99,8 @@
       border-radius: 14px;
       padding: 16px;
       margin-bottom: 16px;
+      position: relative;
+      z-index: 2;
     }
 
     .card-title {
@@ -155,8 +156,11 @@
       border: 1px solid var(--border);
       color: var(--text);
       border-radius: 10px;
-      padding: 9px 12px;
-      font-size: 0.92rem;
+      padding: 10px 12px;
+      font-size: 0.95rem;
+      pointer-events: auto;
+      user-select: text;
+      -webkit-user-select: text;
     }
 
     .input:focus, select:focus {
@@ -176,8 +180,8 @@
     .btn {
       border: 1px solid transparent;
       border-radius: 10px;
-      padding: 8px 13px;
-      font-size: 0.86rem;
+      padding: 9px 14px;
+      font-size: 0.88rem;
       font-weight: 700;
       cursor: pointer;
       display: inline-flex;
@@ -185,6 +189,7 @@
       justify-content: center;
       gap: 6px;
       transition: 0.15s;
+      pointer-events: auto;
     }
 
     .btn:disabled {
@@ -256,7 +261,6 @@
     .log-ok { color: #10b981; }
     .log-err { color: #f87171; }
 
-    /* عرض مختصر ومرتب للحسابات دون إغراق الشاشة */
     .acc-item {
       background: var(--card-2);
       border: 1px solid var(--border);
@@ -299,8 +303,8 @@
     }
 
     .mini {
-      padding: 4px 8px;
-      font-size: 0.75rem;
+      padding: 5px 9px;
+      font-size: 0.76rem;
       border-radius: 7px;
     }
 
@@ -404,7 +408,7 @@
       </div>
       <div class="top-actions">
         <span class="pill" id="session-pill">غير مسجل</span>
-        <button class="btn btn-ghost mini hidden" id="logout-btn" onclick="logout()">
+        <button type="button" class="btn btn-ghost mini hidden" id="logout-btn" onclick="logout()">
           <i class="fa-solid fa-right-from-bracket"></i> خروج
         </button>
       </div>
@@ -428,7 +432,7 @@
       <div id="form-key-login">
         <div class="form-group">
           <label for="access-key-input">أدخل كلمة السر المخصصة</label>
-          <input type="text" id="access-key-input" class="input mono" placeholder="مثال: RAHIM-VIP-4">
+          <input type="text" id="access-key-input" class="input mono" autocomplete="off" spellcheck="false" placeholder="مثال: RAHIM-VIP-4">
         </div>
         <button type="button" class="btn btn-primary" onclick="loginWithKey()">
           <i class="fa-solid fa-unlock"></i> دخول
@@ -438,11 +442,11 @@
       <div id="form-owner-login" class="hidden">
         <div class="form-group">
           <label for="owner-user-input">اسم المالك</label>
-          <input type="text" id="owner-user-input" class="input" value="OWNER">
+          <input type="text" id="owner-user-input" class="input" autocomplete="username" value="OWNER">
         </div>
         <div class="form-group">
           <label for="owner-pass-input">كلمة سر المالك</label>
-          <input type="password" id="owner-pass-input" class="input" placeholder="كلمة سر المالك">
+          <input type="password" id="owner-pass-input" class="input" autocomplete="current-password" placeholder="كلمة سر المالك">
         </div>
         <button type="button" class="btn btn-primary" onclick="loginAsOwner()">
           <i class="fa-solid fa-crown"></i> دخول حساب المالك
@@ -462,7 +466,7 @@
       <div class="grid-2" style="margin-bottom: 14px;">
         <div class="form-group" style="margin-bottom:0;">
           <label for="new-key-code">كلمة السر الجديدة (اختياري - يولّد تلقائياً إذا ترك فارغاً)</label>
-          <input type="text" id="new-key-code" class="input mono" placeholder="مثال: TEAM-RAHIM-4">
+          <input type="text" id="new-key-code" class="input mono" autocomplete="off" spellcheck="false" placeholder="مثال: TEAM-RAHIM-4">
         </div>
         <div class="form-group" style="margin-bottom:0;">
           <label for="new-key-users">صالحة لكم شخص؟ (مثال: 4)</label>
@@ -600,10 +604,15 @@
     }
 
     function switchLoginTab(tab) {
-      document.getElementById('tab-key').classList.toggle('active', tab === 'key');
-      document.getElementById('tab-owner').classList.toggle('active', tab === 'owner');
-      document.getElementById('form-key-login').classList.toggle('hidden', tab !== 'key');
-      document.getElementById('form-owner-login').classList.toggle('hidden', tab !== 'owner');
+      const isKey = tab === 'key';
+      document.getElementById('tab-key').classList.toggle('active', isKey);
+      document.getElementById('tab-owner').classList.toggle('active', !isKey);
+      document.getElementById('form-key-login').classList.toggle('hidden', !isKey);
+      document.getElementById('form-owner-login').classList.toggle('hidden', isKey);
+      const focusTarget = document.getElementById(isKey ? 'access-key-input' : 'owner-pass-input');
+      if (focusTarget) {
+        setTimeout(() => focusTarget.focus(), 10);
+      }
     }
 
     async function copyStr(text, label = 'البيانات') {
@@ -656,9 +665,13 @@
     }
 
     async function checkSession() {
-      const res = await fetch('/api/session');
-      const data = await res.json();
-      applySessionUI(data);
+      try {
+        const res = await fetch('/api/session');
+        const data = await res.json();
+        applySessionUI(data);
+      } catch (_) {
+        applySessionUI({ authenticated: false });
+      }
     }
 
     async function loginWithKey() {
@@ -766,8 +779,7 @@
 
     function copyAllSummary() {
       if (!accounts.length) return;
-      const txt = accounts.map((a, i) => formatSummaryLine(a, i)).join('
-');
+      const txt = accounts.map((a, i) => formatSummaryLine(a, i)).join('\n');
       copyStr(txt, 'جميع الحسابات المرتبة');
     }
 
