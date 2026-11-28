@@ -190,20 +190,17 @@ def generate_one_backend(region):
 
  # Step 2: Token
  try:
-    # الكود الذي يسبق payload
+    # الكود السابق للسطر 192
     ...
 except Exception as e:
-    # معالجة الخطأ أو تسجيله
-    ...
+    print(f"Error: {e}")
 
-payload = {
-    "uid": uid,
-    "password": password,
-    "response_type": "token",
-    "client_type": "2",
-    "client_secret": CLIENT_SECRET,
-    "client_id": "100067",
-}
+try:
+    # هذا هو الـ try الذي يبدأ عند السطر 192
+    ...
+except Exception as e:
+    print(f"Error: {e}")
+
 
 
 response = requests.post("https://example.com/auth/token", data=payload)
