@@ -189,7 +189,14 @@ def generate_one_backend(region):
              uid = str(d["data"]["uid"])
 
  # Step 2: Token
- payload = {
+ try:
+    # الكود الذي يسبق payload
+    ...
+except Exception as e:
+    # معالجة الخطأ أو تسجيله
+    ...
+
+payload = {
     "uid": uid,
     "password": password,
     "response_type": "token",
@@ -197,6 +204,7 @@ def generate_one_backend(region):
     "client_secret": CLIENT_SECRET,
     "client_id": "100067",
 }
+
 
 response = requests.post("https://example.com/auth/token", data=payload)
 print(response.status_code, response.text)
