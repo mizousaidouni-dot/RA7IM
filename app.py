@@ -6,10 +6,10 @@ import random
 import hashlib
 import hmac
 import threading
-import itertools
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import urllib.request
+import urllib.parse
 import urllib.error
 import ssl
 from Crypto.Cipher import AES
@@ -50,8 +50,62 @@ SERVERS = [
     ("ME", "Middle East", "https://clientbp.ppmainecoonghj.com"),
     ("VN", "Vietnam", "clientbp.vn.freefiremobile.com"),
     ("BR", "Brazil", "clientbp.br.freefiremobile.com"),
-    ("US", "United States", "client.gz.freefiremobile.com"),
+    ("US", "United States", "clientbp.us.freefiremobile.com"),
 ]
+
+XOR_KEY = [
+    0x30, 0x30, 0x30, 0x32, 0x30, 0x31, 0x37, 0x30, 0x30, 0x30, 0x30, 0x30, 0x32, 0x30, 0x31, 0x37,
+    0x30, 0x30, 0x30, 0x30, 0x30, 0x32, 0x30, 0x31, 0x37, 0x30, 0x30, 0x30, 0x30, 0x30, 0x32, 0x30
+]
+
+FIELD_22_HEX = (
+    "474752450101010062020000a78910bd098e3ff2e4345d59a31db114ea088f37e32e65"
+    "212ff96621793d9eb78720d0bf2ac95176569765247ada5eb01376b3b9931794a4946"
+    "d76ef8890779f3f2129317e6e1cb2fdcf7b06247cea343b8d4f167eff85a2e1dfe99"
+    "b4583a7e1a155dbe7f7f85cff3b223eb77222ec1228f3ee1ef6ce7f8ca24b00a554"
+    "e497328812f8df74c82d519ae3e3ceab436eb145e8a517089a7cef6a4efb22214b2"
+    "a4b19989b74807584afe5e52825e7ac60e19a596a9bf02d961de6a0ed2515ec6023"
+    "fdb7684d9464b97b21c527ce61b6bee4ef30d20a1fa33a996952d44d44e44f2f86c"
+    "768aaf2a7808ad60f91048dca0207961ba7c2555c48341b30190debc775edb2cee24"
+    "4cf51fca3760ce4388be2db45e80b813b5beb9c784007b7762d7a1e428affc8a3a4"
+    "cd76cbaef648a274297fde33233dccd3f272cb77f39a1affe0365a24954111f768f72"
+    "0e77535af024bea2b2726c3bac992374755c3deacf09235e6865d456e651680d115a"
+    "751a797225eaacdf9a513cf104526e1a32e5296e111a33ae581a63850837921df848"
+    "9adfd41ea895b7cf3f5b2e45d538a6e4f032f590ccbb7daf5fa9c50adadee0799661"
+    "4c3f957bda349e6c484fdf55970d1943ad7955a76671298b6d98b636b69ebde6bc94"
+    "dbd93ac3393a6ae230130445b2d744189167854a5617be2393e7d8fbb5719a1b4754"
+    "1ba466167e3e05a6c244f1301ee2035acf94dffc8adbde747d5cd85e35ead3acc372"
+    "a59c4220e54bf63f9d80485f3de2518495c1d0f78c911d2da595911fd2a1989cf17"
+    "cf3ded5f6c92dea64d675c555c11df92d6c517ca5d0d61a8962f43f76ec7e87596c"
+    "8325ebf9ab0f8e6d2eca33c511ceac6980906ebd68c478665591dcecf788ec6ef34c"
+    "fbe3fcc279c6147c5bf91cd43cdc9704236"
+)
+
+_SUPERSCRIPT_MAP = {
+    "0": "â°", "1": "Â¹", "2": "Â²", "3": "Â³", "4": "â´",
+    "5": "âµ", "6": "â¶", "7": "â·", "8": "â¸", "9": "â¹",
+}
+_used_numbers = set()
+_used_lock = threading.Lock()
+
+
+def build_nickname():
+    with _used_lock:
+        if len(_used_numbers) >= 9999:
+            num = random.randint(1, 9999)
+        else:
+            while True:
+                num = random.randint(1, 9999)
+                if num not in _used_numbers:
+                    _used_numbers.add(num)
+                    break
+    sup = "".join(_SUPERSCRIPT_MAP[d] for d in str(num))
+    return f"YAHYAã¤{sup}"
+
+
+def xor_open_id(open_id: str) -> bytes:
+    b = open_id.encode("utf-8")
+    return bytes(x ^ XOR_KEY[i % len(XOR_KEY)] for i, x in enumerate(b))
 
 
 class SimpleResponse:
@@ -215,8 +269,23 @@ def generate_one_backend(region):
             raise RuntimeError(f"Step 1 register failed: {d.get('message') or d}")
         uid = str(d["data"]["uid"])
 
-        # Step 2: Token
-        r = http_post(OAUTH_TOKEN_URL, data=body, headers=headers, timeout=30)
+        # Step 2: Token (Fixed form-urlencoded payload matching working script)
+        token_payload = {
+            "uid": uid,
+            "password": password,
+            "response_type": "token",
+            "client_type": "2",
+            "client_secret": CLIENT_SECRET,
+            "client_id": "100067",
+        }
+        token_body = urllib.parse.urlencode(token_payload)
+        token_headers = {
+            "User-Agent": "GarenaMSDK/4.0.30",
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Connection": "Keep-Alive",
+        }
+        r = http_post(OAUTH_TOKEN_URL, data=token_body, headers=token_headers, timeout=30)
         if r.status_code != 200:
             raise RuntimeError(f"Step 2 HTTP {r.status_code}: {r.text[:200]}")
         d = r.json()
@@ -226,9 +295,9 @@ def generate_one_backend(region):
         if not access_token or not open_id:
             raise RuntimeError(f"Step 2 missing token/open_id: {d}")
 
-        nickname = f"YAHYA{random.randint(1000, 9999)}"
+        nickname = build_nickname()
 
-        # Step 3: MajorRegister
+        # Step 3: MajorRegister (with xor_open_id & dynamic account_id extraction)
         fields = {
             1: nickname,
             2: access_token,
@@ -237,15 +306,15 @@ def generate_one_backend(region):
             6: 4,
             7: 1,
             13: 1,
-            14: open_id.encode(),
+            14: xor_open_id(open_id),
             15: region,
             16: 2,
             20: "2.133.8",
             21: 1,
-            22: bytes.fromhex("474752450101010062020000a78910bd098e3ff2e4345d59a31db114ea088f37e32e65212ff96621793d9eb78720d0bf2ac95176569765247ada5eb01376b3b9931794a4946d76ef8890779f3f2129317e6e1cb2fdcf7b06247cea343b8d4f167eff85a2e1dfe99b4583a7e1a155dbe7f7f85cff3b223eb77222ec1228f3ee1ef6ce7f8ca24b00a554e497328812f8df74c82d519ae3e3ceab436eb145e8a517089a7cef6a4efb22214b2a4b19989b74807584afe5e52825e7ac60e19a596a9bf02d961de6a0ed2515ec6023fdb7684d9464b97b21c527ce61b6bee4ef30d20a1fa33a996952d44d44e44f2f86c768aaf2a7808ad60f91048dca0207961ba7c2555c48341b30190debc775edb2cee244cf51fca3760ce4388be2db45e80b813b5beb9c784007b7762d7a1e428affc8a3a4cd76cbaef648a274297fde33233dccd3f272cb77f39a1affe0365a24954111f768f720e77535af024bea2b2726c3bac992374755c3deacf09235e6865d456e651680d115a751a797225eaacdf9a513cf104526e1a32e5296e111a33ae581a63850837921df8489adfd41ea895b7cf3f5b2e45d538a6e4f032f590ccbb7daf5fa9c50adadee07996614c3f957bda349e6c484fdf55970d1943ad7955a76671298b6d98b636b69ebde6bc94dbd93ac3393a6ae230130445b2d744189167854a5617be2393e7d8fbb5719a1b47541ba466167e3e05a6c244f1301ee2035acf94dffc8adbde747d5cd85e35ead3acc372a59c4220e54bf63f9d80485f3de2518495c1d0f78c911d2da595911fd2a1989cf17cf3ded5f6c92dea64d675c555c11df92d6c517ca5d0d61a8962f43f76ec7e87596c8325ebf9ab0f8e6d2eca33c511ceac6980906ebd68c478665591dcecf788ec6ef34cfbe3fcc279c6147c5bf91cd43cdc9704236")
+            22: bytes.fromhex(FIELD_22_HEX),
         }
         encrypted = aes_encrypt(assemble_proto(fields))
-        headers = {
+        game_headers = {
             "Host": "loginbp.ppmainecoonghj.com",
             "User-Agent": "UnityPlayer/2018.4.12f1 (UnityWebRequest/1.0, libcurl/8.5.0-DEV)",
             "Accept": "*/*",
@@ -257,16 +326,25 @@ def generate_one_backend(region):
             "X-Unity-Version": "2018.4.12f1",
             "Content-Length": str(len(encrypted)),
         }
-        r = http_post(MAJOR_REGISTER_URL, data=encrypted, headers=headers, timeout=30)
+        r = http_post(MAJOR_REGISTER_URL, data=encrypted, headers=game_headers, timeout=30)
+        if r.status_code != 200:
+            raise RuntimeError(f"Step 3 HTTP {r.status_code}")
+        parsed_reg = parse_proto(r.content)
+        account_id = parsed_reg.get(3)
+        if not account_id:
+            raise RuntimeError("Step 3 missing account_id")
+        account_id = int(account_id)
 
-        # Step 4: Newbie
-        plain_newbie = assemble_proto({1: 12345678, 2: 1, 3: 3})
+        # Step 4: ChooseNewbieChoice
+        plain_newbie = assemble_proto({1: account_id, 2: 1, 3: 3})
         encrypted_newbie = aes_encrypt(plain_newbie)
-        headers["X-GA-SV"] = str(int(time.time()))
-        headers["Content-Length"] = str(len(encrypted_newbie))
-        http_post(NEWBIE_URL, headers=headers, data=encrypted_newbie, timeout=30)
+        game_headers["X-GA-SV"] = str(int(time.time()))
+        game_headers["Content-Length"] = str(len(encrypted_newbie))
+        r_newbie = http_post(NEWBIE_URL, headers=game_headers, data=encrypted_newbie, timeout=30)
+        if r_newbie.status_code != 200:
+            raise RuntimeError(f"Step 4 HTTP {r_newbie.status_code}")
 
-        # Step 5: MajorLogin (Extract JWT)
+        # Step 5: MajorLogin (Extract JWT, session_key, session_iv)
         fields_login = {
             3: time.strftime("%Y-%m-%d %H:%M:%S"),
             4: "free fire", 5: 1, 7: "2.133.9",
@@ -301,16 +379,42 @@ def generate_one_backend(region):
             107: "1.9393e7b8e53e8aeb",
         }
         encrypted_login = aes_encrypt(assemble_proto(fields_login))
-        headers["X-GA-SV"] = str(int(time.time()))
-        headers["Content-Length"] = str(len(encrypted_login))
-        r = http_post(MAJOR_LOGIN_URL, data=encrypted_login, headers=headers, timeout=30)
+        game_headers["X-GA-SV"] = str(int(time.time()))
+        game_headers["Content-Length"] = str(len(encrypted_login))
+        r = http_post(MAJOR_LOGIN_URL, data=encrypted_login, headers=game_headers, timeout=30)
+        if r.status_code != 200:
+            raise RuntimeError(f"Step 5 HTTP {r.status_code}")
 
         raw = r.content
-        decrypted = aes_decrypt(raw)
-        parsed = parse_proto(decrypted)
-        jwt = parsed.get(8)
-        if isinstance(jwt, bytes):
-            jwt = jwt.decode("utf-8", "ignore")
+        jwt = None
+        session_key = AES_KEY
+        session_iv = AES_IV
+
+        for buf in (aes_decrypt(raw), raw[64:] if len(raw) > 64 else b"", raw):
+            if not buf:
+                continue
+            try:
+                parsed = parse_proto(buf)
+            except Exception:
+                continue
+            candidate = parsed.get(8)
+            if isinstance(candidate, bytes):
+                candidate = candidate.decode("utf-8", "ignore")
+            if isinstance(candidate, str) and candidate.startswith("eyJ") and candidate.count(".") == 2:
+                jwt = candidate
+                sixteen = []
+                for fnum in sorted(parsed.keys()):
+                    v = parsed[fnum]
+                    vals = v if isinstance(v, list) else [v]
+                    for val in vals:
+                        if isinstance(val, (bytes, bytearray)) and len(val) == 16:
+                            sixteen.append(bytes(val))
+                if len(sixteen) >= 2:
+                    session_key, session_iv = sixteen[-2], sixteen[-1]
+                break
+
+        if not jwt:
+            raise RuntimeError("Step 5 missing JWT")
 
         return {
             "ok": True,
@@ -320,11 +424,12 @@ def generate_one_backend(region):
                 "nickname": nickname,
                 "open_id": open_id,
                 "access_token": access_token,
-                "account_id": 12345678,
+                "account_id": account_id,
                 "region": region,
                 "jwt": jwt,
-                "session_key": "0x" + str(hashlib.sha256(open_id.encode()).hexdigest()[:16]),
-                "session_iv": "0x" + str(hashlib.sha256(open_id.encode()).hexdigest()[:16]),
+                "session_key": session_key.hex(),
+                "session_iv": session_iv.hex(),
+                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
             },
         }
 
