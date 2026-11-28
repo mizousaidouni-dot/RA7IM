@@ -188,20 +188,18 @@ def generate_one_backend(region):
              raise RuntimeError(f"register failed: {d.get('message')}")
              uid = str(d["data"]["uid"])
 
- # Step 2: Token
- try:
+# Step 2: Token
+try:
     # الكود السابق للسطر 192
-    ...
+    pass
 except Exception as e:
     print(f"Error: {e}")
 
 try:
     # هذا هو الـ try الذي يبدأ عند السطر 192
-    ...
+    pass
 except Exception as e:
     print(f"Error: {e}")
-
-
 
 response = requests.post("https://example.com/auth/token", data=payload)
 print(response.status_code, response.text)
