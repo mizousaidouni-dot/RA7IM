@@ -97,21 +97,30 @@ def read_varint(data, offset):
          return r, offset
 
 def parse_proto(data):
- out = {}
- off = 0
- while off < len(data):
-     try:
-         tag, off = read_varint(data, off)
- except Exception:
-     break
-     f = tag >> 3
-     w = tag & 0x7
-     if f == 0:
-         break
-         try:
-             if w == 0:
-                 v, off = read_varint(data, off)
-                 out[f] = v
+    out = {}
+    off = 0
+    while off < len(data):
+        try:
+            tag, off = read_varint(data, off)
+        except Exception:
+            break
+        f = tag >> 3
+        w = tag & 0x7
+        if f == 0:
+            break
+        try:
+            if w == 0:
+                v, off = read_varint(data, off)
+                out[f] = v
+            elif w == 2:
+                length, off = read_varint(data, off)
+                out[f] = data[off:off + length]
+                off += length
+            else:
+                break
+        except Exception:
+            break
+    return out
  elif w == 2:
      ln, off = read_varint(data, off)
      val = data[off:off + ln]
