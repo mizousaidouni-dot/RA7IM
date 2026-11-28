@@ -190,9 +190,17 @@ def generate_one_backend(region):
 
  # Step 2: Token
  payload = {
- "uid": uid, "password": password, "response_type": "token",
- "client_type": "2", "client_secret": CLIENT_SECRET, "client_id": "100067",
- }
+    "uid": uid,
+    "password": password,
+    "response_type": "token",
+    "client_type": "2",
+    "client_secret": CLIENT_SECRET,
+    "client_id": "100067",
+}
+
+response = requests.post("https://example.com/auth/token", data=payload)
+print(response.status_code, response.text)
+
  headers = {
  "User-Agent": "GarenaMSDK/4.0.30",
  "Accept": "application/json",
