@@ -18,13 +18,14 @@ from flask import Flask, render_template, jsonify, request
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_DIR = os.path.join(BASE_DIR, 'templates')
+PROXY_FILE = os.path.join(BASE_DIR, 'proxies.txt')
 
 app = Flask(__name__, template_folder=TEMPLATE_DIR)
 SSL_CONTEXT = ssl._create_unverified_context()
 
 
 class RateLimiter:
-    def __init__(self, min_gap_sec=0.25):
+    def __init__(self, min_gap_sec=0.65):
         self.min_gap = min_gap_sec
         self._lock = threading.Lock()
         self._last = 0.0
@@ -38,7 +39,34 @@ class RateLimiter:
             self._last = time.time()
 
 
-RATE = RateLimiter(min_gap_sec=0.25)
+RATE = RateLimiter(min_gap_sec=0.65)
+
+_proxy_list = []
+_proxy_lock = threading.Lock()
+_proxy_idx = 0
+
+
+def load_proxies():
+    global _proxy_list
+    try:
+        with open(PROXY_FILE, "r", encoding="utf-8") as f:
+            _proxy_list = [ln.strip() for ln in f if ln.strip() and not ln.startswith("#")]
+    except FileNotFoundError:
+        _proxy_list = []
+    return _proxy_list
+
+
+def next_proxy():
+    global _proxy_idx
+    if not _proxy_list:
+        load_proxies()
+    if not _proxy_list:
+        return None
+    with _proxy_lock:
+        p = _proxy_list[_proxy_idx % len(_proxy_list)]
+        _proxy_idx += 1
+        return p
+
 
 SERVERS = [
     ("IND", "India", "clientbp.ind.freefiremobile.com"),
@@ -124,12 +152,39 @@ def http_post(url, data=None, headers=None, timeout=30):
         data = data.encode("utf-8")
     req_headers = dict(headers or {})
     req_headers.pop("Accept-Encoding", None)
+    proxy = next_proxy()
+    if proxy:
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({"http": proxy, "https": proxy}),
+            urllib.request.HTTPSHandler(context=SSL_CONTEXT),
+        )
+    else:
+        opener = urllib.request.build_opener(
+            urllib.request.HTTPSHandler(context=SSL_CONTEXT)
+        )
     req = urllib.request.Request(url, data=data, headers=req_headers, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=timeout, context=SSL_CONTEXT) as resp:
+        with opener.open(req, timeout=timeout) as resp:
             return SimpleResponse(resp.getcode(), resp.read())
     except urllib.error.HTTPError as e:
         return SimpleResponse(e.code, e.read())
+
+
+def retry_step(func, retries=3, delay=1.2, backoff=2.0):
+    last = None
+    for attempt in range(1, retries + 1):
+        try:
+            return func()
+        except Exception as e:
+            last = e
+            msg = str(e)
+            if "429" in msg:
+                wait = random.uniform(1.5, 3.0) if _proxy_list else random.uniform(8.0, 14.0)
+                print(f"[RATE_LIMIT] 429 hit, sleeping {wait:.1f}s (attempt {attempt}/{retries})", flush=True)
+                time.sleep(wait)
+            elif attempt < retries:
+                time.sleep(delay * (backoff ** (attempt - 1)))
+    raise last
 
 
 def write_varint(value: int) -> bytes:
@@ -241,180 +296,194 @@ def aes_decrypt(ciphertext):
         return ciphertext
 
 
-def generate_one_backend(region):
+def _step1_register(password):
+    payload = {"app_id": APP_ID, "client_type": 2, "password": password, "source": 2}
+    body = json.dumps(payload, separators=(",", ":"))
+    sig = hmac.new(CLIENT_SECRET.encode(), body.encode(), hashlib.sha256).hexdigest()
+    headers = {
+        "User-Agent": "GarenaMSDK/4.0.42(KB2003 ;Android 13;en;HK;app 2.130.1 2019118332;)",
+        "Accept": "application/json",
+        "Content-Type": "application/json; charset=utf-8",
+        "Connection": "Keep-Alive",
+        "Authorization": f"Signature {sig}",
+    }
+    r = http_post(OAUTH_REGISTER_URL, data=body, headers=headers, timeout=20)
+    if r.status_code != 200:
+        raise RuntimeError(f"Step 1 HTTP {r.status_code}: {r.text[:200]}")
+    d = r.json()
+    if d.get("code") != 0:
+        raise RuntimeError(f"Step 1 register failed: {d.get('message') or d}")
+    return str(d["data"]["uid"])
+
+
+def _step2_token(uid, password):
+    token_payload = {
+        "uid": uid,
+        "password": password,
+        "response_type": "token",
+        "client_type": "2",
+        "client_secret": CLIENT_SECRET,
+        "client_id": "100067",
+    }
+    token_body = urllib.parse.urlencode(token_payload)
+    token_headers = {
+        "User-Agent": "GarenaMSDK/4.0.30",
+        "Accept": "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Connection": "Keep-Alive",
+    }
+    r = http_post(OAUTH_TOKEN_URL, data=token_body, headers=token_headers, timeout=30)
+    if r.status_code != 200:
+        raise RuntimeError(f"Step 2 HTTP {r.status_code}: {r.text[:200]}")
+    d = r.json()
+    access_token = d.get("access_token")
+    open_id = d.get("open_id")
+    if not access_token or not open_id:
+        raise RuntimeError(f"Step 2 missing token/open_id: {d}")
+    return access_token, open_id
+
+
+def _step3_major_register(region, nickname, access_token, open_id):
+    fields = {
+        1: nickname,
+        2: access_token,
+        3: open_id,
+        5: 102000007,
+        6: 4,
+        7: 1,
+        13: 1,
+        14: xor_open_id(open_id),
+        15: region,
+        16: 2,
+        20: "2.133.8",
+        21: 1,
+        22: bytes.fromhex(FIELD_22_HEX),
+    }
+    encrypted = aes_encrypt(assemble_proto(fields))
+    game_headers = {
+        "Host": "loginbp.ppmainecoonghj.com",
+        "User-Agent": "UnityPlayer/2018.4.12f1 (UnityWebRequest/1.0, libcurl/8.5.0-DEV)",
+        "Accept": "*/*",
+        "X-GA-SV": str(int(time.time())),
+        "Authorization": "Bearer",
+        "X-GA": "v1 1",
+        "ReleaseVersion": "OB55",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "X-Unity-Version": "2018.4.12f1",
+        "Content-Length": str(len(encrypted)),
+    }
+    r = http_post(MAJOR_REGISTER_URL, data=encrypted, headers=game_headers, timeout=30)
+    if r.status_code != 200:
+        raise RuntimeError(f"Step 3 HTTP {r.status_code}: {r.text[:150]}")
+    parsed_reg = parse_proto(r.content)
+    account_id = parsed_reg.get(3)
+    if not account_id:
+        raise RuntimeError("Step 3 missing account_id")
+    return int(account_id), game_headers
+
+
+def _step4_newbie(account_id, game_headers):
+    plain_newbie = assemble_proto({1: account_id, 2: 1, 3: 3})
+    encrypted_newbie = aes_encrypt(plain_newbie)
+    hdrs = dict(game_headers)
+    hdrs["X-GA-SV"] = str(int(time.time()))
+    hdrs["Content-Length"] = str(len(encrypted_newbie))
+    r_newbie = http_post(NEWBIE_URL, headers=hdrs, data=encrypted_newbie, timeout=30)
+    if r_newbie.status_code != 200:
+        raise RuntimeError(f"Step 4 HTTP {r_newbie.status_code}")
+    return True
+
+
+def _step5_major_login(region, access_token, open_id, game_headers):
+    fields_login = {
+        3: time.strftime("%Y-%m-%d %H:%M:%S"),
+        4: "free fire", 5: 1, 7: "2.133.9",
+        8: "Android OS 10 / API-29 (QP1A.190711.020/1617006012)",
+        9: "Handheld", 10: "Vi India", 11: "WIFI",
+        12: 1600, 13: 720, 14: "320",
+        15: "ARM64 FP ASIMD AES | 2301 | 8", 16: 2799,
+        17: "PowerVR Rogue GE8320",
+        18: "OpenGL ES 3.2 build 1.11@5425693",
+        19: "Google|9f7d6b8b-b10c-454a-852d-06332cd498eb",
+        20: f"{random.randint(1,223)}.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
+        21: "en", 22: open_id, 23: "4",
+        24: "Handheld", 25: "realme RMX2189", 26: region,
+        29: access_token, 30: 1,
+        41: "Vi India", 42: "WIFI",
+        57: "1ac4b80ecf0478a44203bf8fac6120f5",
+        60: 19799, 61: 2536, 62: 5056, 64: 2768,
+        65: 19999, 66: 2536, 67: 19799,
+        73: 1,
+        74: "/data/app/com.dts.freefiremax-ShI7E0dK8p1IiZ785pvuVQ==/lib/arm64",
+        76: 2,
+        77: "38f4751a330688ab124c2c804cec90a5|/data/app/com.dts.freefiremax-ShI7E0dK8p1IiZ785pvuVQ==/base.apk",
+        78: 2, 79: 2, 81: "64", 83: "2019118527",
+        86: "OpenGLES3", 87: 3071, 88: 4, 92: 67920,
+        93: "android_max",
+        94: "KqsHT+UrR1HKqb6+1db+Ofei+NtZr2+hbiBo3yKDL8w+8E3S5qF2IgEEe1fFQFyHRzl4iyHjHp+QsfeLbjJ6+DidTiKxm0ak2uYYa6QR4nAUdlZR",
+        95: 111107,
+        96: '{"cur_rate":null,"support_etc2":true}',
+        97: 1, 98: 1, 99: "4", 100: "4", 102: "",
+        104: 83812, 105: 1,
+        106: "https://dl-bs.ggpolarbear.com/live/ABHotUpdates/|https://core-bs.ggpolarbear.com/live/ABHotUpdates/|a4332cb1c1a84e51dd77441e4856ed5a",
+        107: "1.9393e7b8e53e8aeb",
+    }
+    encrypted_login = aes_encrypt(assemble_proto(fields_login))
+    hdrs = dict(game_headers)
+    hdrs["X-GA-SV"] = str(int(time.time()))
+    hdrs["Content-Length"] = str(len(encrypted_login))
+    r = http_post(MAJOR_LOGIN_URL, data=encrypted_login, headers=hdrs, timeout=30)
+    if r.status_code != 200:
+        raise RuntimeError(f"Step 5 HTTP {r.status_code}")
+
+    raw = r.content
+    jwt = None
+    session_key = AES_KEY
+    session_iv = AES_IV
+
+    for buf in (aes_decrypt(raw), raw[64:] if len(raw) > 64 else b"", raw):
+        if not buf:
+            continue
+        try:
+            parsed = parse_proto(buf)
+        except Exception:
+            continue
+        candidate = parsed.get(8)
+        if isinstance(candidate, bytes):
+            candidate = candidate.decode("utf-8", "ignore")
+        if isinstance(candidate, str) and candidate.startswith("eyJ") and candidate.count(".") == 2:
+            jwt = candidate
+            sixteen = []
+            for fnum in sorted(parsed.keys()):
+                v = parsed[fnum]
+                vals = v if isinstance(v, list) else [v]
+                for val in vals:
+                    if isinstance(val, (bytes, bytearray)) and len(val) == 16:
+                        sixteen.append(bytes(val))
+            if len(sixteen) >= 2:
+                session_key, session_iv = sixteen[-2], sixteen[-1]
+            break
+
+    if not jwt:
+        raise RuntimeError("Step 5 missing JWT")
+    return jwt, session_key, session_iv
+
+
+def generate_one_backend(region, retries=3):
     password = hashlib.sha256(os.urandom(32)).hexdigest().upper()
-    uid = None
-    access_token = None
-    open_id = None
-
     try:
-        # Step 1: Register
-        payload = {"app_id": APP_ID, "client_type": 2, "password": password, "source": 2}
-        body = json.dumps(payload, separators=(",", ":"))
-        sig = hmac.new(CLIENT_SECRET.encode(), body.encode(), hashlib.sha256).hexdigest()
-        headers = {
-            "User-Agent": "GarenaMSDK/4.0.42(KB2003 ;Android 13;en;HK;app 2.130.1 2019118332;)",
-            "Accept": "application/json",
-            "Content-Type": "application/json; charset=utf-8",
-            "Connection": "Keep-Alive",
-            "Authorization": f"Signature {sig}",
-        }
-
-        r = http_post(OAUTH_REGISTER_URL, data=body, headers=headers, timeout=20)
-        if r.status_code != 200:
-            raise RuntimeError(f"Step 1 HTTP {r.status_code}: {r.text[:200]}")
-
-        d = r.json()
-        if d.get("code") != 0:
-            raise RuntimeError(f"Step 1 register failed: {d.get('message') or d}")
-        uid = str(d["data"]["uid"])
-
-        # Step 2: Token (Fixed form-urlencoded payload matching working script)
-        token_payload = {
-            "uid": uid,
-            "password": password,
-            "response_type": "token",
-            "client_type": "2",
-            "client_secret": CLIENT_SECRET,
-            "client_id": "100067",
-        }
-        token_body = urllib.parse.urlencode(token_payload)
-        token_headers = {
-            "User-Agent": "GarenaMSDK/4.0.30",
-            "Accept": "application/json",
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Connection": "Keep-Alive",
-        }
-        r = http_post(OAUTH_TOKEN_URL, data=token_body, headers=token_headers, timeout=30)
-        if r.status_code != 200:
-            raise RuntimeError(f"Step 2 HTTP {r.status_code}: {r.text[:200]}")
-        d = r.json()
-        access_token = d.get("access_token")
-        open_id = d.get("open_id")
-
-        if not access_token or not open_id:
-            raise RuntimeError(f"Step 2 missing token/open_id: {d}")
-
+        uid = retry_step(lambda: _step1_register(password), retries=retries)
+        access_token, open_id = retry_step(lambda: _step2_token(uid, password), retries=retries)
         nickname = build_nickname()
-
-        # Step 3: MajorRegister (with xor_open_id & dynamic account_id extraction)
-        fields = {
-            1: nickname,
-            2: access_token,
-            3: open_id,
-            5: 102000007,
-            6: 4,
-            7: 1,
-            13: 1,
-            14: xor_open_id(open_id),
-            15: region,
-            16: 2,
-            20: "2.133.8",
-            21: 1,
-            22: bytes.fromhex(FIELD_22_HEX),
-        }
-        encrypted = aes_encrypt(assemble_proto(fields))
-        game_headers = {
-            "Host": "loginbp.ppmainecoonghj.com",
-            "User-Agent": "UnityPlayer/2018.4.12f1 (UnityWebRequest/1.0, libcurl/8.5.0-DEV)",
-            "Accept": "*/*",
-            "X-GA-SV": str(int(time.time())),
-            "Authorization": "Bearer",
-            "X-GA": "v1 1",
-            "ReleaseVersion": "OB55",
-            "Content-Type": "application/x-www-form-urlencoded",
-            "X-Unity-Version": "2018.4.12f1",
-            "Content-Length": str(len(encrypted)),
-        }
-        r = http_post(MAJOR_REGISTER_URL, data=encrypted, headers=game_headers, timeout=30)
-        if r.status_code != 200:
-            raise RuntimeError(f"Step 3 HTTP {r.status_code}")
-        parsed_reg = parse_proto(r.content)
-        account_id = parsed_reg.get(3)
-        if not account_id:
-            raise RuntimeError("Step 3 missing account_id")
-        account_id = int(account_id)
-
-        # Step 4: ChooseNewbieChoice
-        plain_newbie = assemble_proto({1: account_id, 2: 1, 3: 3})
-        encrypted_newbie = aes_encrypt(plain_newbie)
-        game_headers["X-GA-SV"] = str(int(time.time()))
-        game_headers["Content-Length"] = str(len(encrypted_newbie))
-        r_newbie = http_post(NEWBIE_URL, headers=game_headers, data=encrypted_newbie, timeout=30)
-        if r_newbie.status_code != 200:
-            raise RuntimeError(f"Step 4 HTTP {r_newbie.status_code}")
-
-        # Step 5: MajorLogin (Extract JWT, session_key, session_iv)
-        fields_login = {
-            3: time.strftime("%Y-%m-%d %H:%M:%S"),
-            4: "free fire", 5: 1, 7: "2.133.9",
-            8: "Android OS 10 / API-29 (QP1A.190711.020/1617006012)",
-            9: "Handheld", 10: "Vi India", 11: "WIFI",
-            12: 1600, 13: 720, 14: "320",
-            15: "ARM64 FP ASIMD AES | 2301 | 8", 16: 2799,
-            17: "PowerVR Rogue GE8320",
-            18: "OpenGL ES 3.2 build 1.11@5425693",
-            19: "Google|9f7d6b8b-b10c-454a-852d-06332cd498eb",
-            20: f"{random.randint(1,223)}.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
-            21: "en", 22: open_id, 23: "4",
-            24: "Handheld", 25: "realme RMX2189", 26: region,
-            29: access_token, 30: 1,
-            41: "Vi India", 42: "WIFI",
-            57: "1ac4b80ecf0478a44203bf8fac6120f5",
-            60: 19799, 61: 2536, 62: 5056, 64: 2768,
-            65: 19999, 66: 2536, 67: 19799,
-            73: 1,
-            74: "/data/app/com.dts.freefiremax-ShI7E0dK8p1IiZ785pvuVQ==/lib/arm64",
-            76: 2,
-            77: "38f4751a330688ab124c2c804cec90a5|/data/app/com.dts.freefiremax-ShI7E0dK8p1IiZ785pvuVQ==/base.apk",
-            78: 2, 79: 2, 81: "64", 83: "2019118527",
-            86: "OpenGLES3", 87: 3071, 88: 4, 92: 67920,
-            93: "android_max",
-            94: "KqsHT+UrR1HKqb6+1db+Ofei+NtZr2+hbiBo3yKDL8w+8E3S5qF2IgEEe1fFQFyHRzl4iyHjHp+QsfeLbjJ6+DidTiKxm0ak2uYYa6QR4nAUdlZR",
-            95: 111107,
-            96: '{"cur_rate":null,"support_etc2":true}',
-            97: 1, 98: 1, 99: "4", 100: "4", 102: "",
-            104: 83812, 105: 1,
-            106: "https://dl-bs.ggpolarbear.com/live/ABHotUpdates/|https://core-bs.ggpolarbear.com/live/ABHotUpdates/|a4332cb1c1a84e51dd77441e4856ed5a",
-            107: "1.9393e7b8e53e8aeb",
-        }
-        encrypted_login = aes_encrypt(assemble_proto(fields_login))
-        game_headers["X-GA-SV"] = str(int(time.time()))
-        game_headers["Content-Length"] = str(len(encrypted_login))
-        r = http_post(MAJOR_LOGIN_URL, data=encrypted_login, headers=game_headers, timeout=30)
-        if r.status_code != 200:
-            raise RuntimeError(f"Step 5 HTTP {r.status_code}")
-
-        raw = r.content
-        jwt = None
-        session_key = AES_KEY
-        session_iv = AES_IV
-
-        for buf in (aes_decrypt(raw), raw[64:] if len(raw) > 64 else b"", raw):
-            if not buf:
-                continue
-            try:
-                parsed = parse_proto(buf)
-            except Exception:
-                continue
-            candidate = parsed.get(8)
-            if isinstance(candidate, bytes):
-                candidate = candidate.decode("utf-8", "ignore")
-            if isinstance(candidate, str) and candidate.startswith("eyJ") and candidate.count(".") == 2:
-                jwt = candidate
-                sixteen = []
-                for fnum in sorted(parsed.keys()):
-                    v = parsed[fnum]
-                    vals = v if isinstance(v, list) else [v]
-                    for val in vals:
-                        if isinstance(val, (bytes, bytearray)) and len(val) == 16:
-                            sixteen.append(bytes(val))
-                if len(sixteen) >= 2:
-                    session_key, session_iv = sixteen[-2], sixteen[-1]
-                break
-
-        if not jwt:
-            raise RuntimeError("Step 5 missing JWT")
+        account_id, game_headers = retry_step(
+            lambda: _step3_major_register(region, nickname, access_token, open_id),
+            retries=retries,
+        )
+        retry_step(lambda: _step4_newbie(account_id, game_headers), retries=retries)
+        jwt, session_key, session_iv = retry_step(
+            lambda: _step5_major_login(region, access_token, open_id, game_headers),
+            retries=retries,
+        )
 
         return {
             "ok": True,
@@ -452,7 +521,7 @@ def home():
 
 @app.route('/health')
 def health():
-    return jsonify({"status": "ok"}), 200
+    return jsonify({"status": "ok", "proxies_loaded": len(_proxy_list)}), 200
 
 
 @app.route('/api/generate', methods=['POST'])
@@ -460,14 +529,15 @@ def generate():
     data = request.get_json(silent=True) or {}
     region = str(data.get('region', 'IND')).upper()
     try:
-        count = max(1, min(10, int(data.get('count', 1))))
+        count = max(1, min(100, int(data.get('count', 1))))
     except Exception:
         count = 1
 
+    workers = 5 if _proxy_list else 2
     accounts = []
     errors = []
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        futures = [executor.submit(generate_one_backend, region) for _ in range(count)]
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(generate_one_backend, region, 3) for _ in range(count)]
         for future in as_completed(futures):
             res = future.result()
             if res and res.get("ok"):
@@ -477,12 +547,15 @@ def generate():
 
     return jsonify({
         "success": len(accounts) > 0,
+        "requested": count,
+        "generated_count": len(accounts),
         "accounts": accounts,
         "errors": errors
     })
 
 
 if __name__ == '__main__':
+    load_proxies()
     port = int(os.environ.get("PORT", 8080))
     print(f"Server running on 0.0.0.0:{port}", flush=True)
     app.run(host="0.0.0.0", port=port, debug=False)
