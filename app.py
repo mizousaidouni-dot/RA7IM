@@ -140,19 +140,22 @@ NEWBIE_URL = "https://loginbp.ppmainecoonghj.com/ChooseNewbieChoice"
 MAJOR_LOGIN_URL = "https://loginbp.ppmainecoonghj.com/MajorLogin"
 
 def aes_encrypt(plain):
- return AES.new(AES_KEY, AES.MODE_CBC, AES_IV).encrypt(pad(plain, AES.block_size))
+    return AES.new(AES_KEY, AES.MODE_CBC, AES_IV).encrypt(pad(plain, AES.block_size))
+
 
 def aes_decrypt(ciphertext):
- if not ciphertext or len(ciphertext) % 16 != 0:
-     return ciphertext
-     try:
-         try:
-             return unpad(AES.new(AES_KEY, AES.MODE_CBC, AES_IV).decrypt(ciphertext),
-             AES.block_size)
- except ValueError:
-     return AES.new(AES_KEY, AES.MODE_CBC, AES_IV).decrypt(ciphertext)
- except Exception:
-     return ciphertext
+    if not ciphertext or len(ciphertext) % 16 != 0:
+        return ciphertext
+    try:
+        try:
+            return unpad(
+                AES.new(AES_KEY, AES.MODE_CBC, AES_IV).decrypt(ciphertext),
+                AES.block_size,
+            )
+        except ValueError:
+            return AES.new(AES_KEY, AES.MODE_CBC, AES_IV).decrypt(ciphertext)
+    except Exception:
+        return ciphertext
 
 # ============================================================
 # 4. Back-end Logic (The Generator)
