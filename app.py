@@ -16,8 +16,12 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 from flask import Flask, render_template, jsonify, request
 
+# --- تحديد المسار المطلق لمجلد القوالب ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATE_DIR = os.path.join(BASE_DIR, 'templates')
+
 # --- إعداد الواجهة ---
-app = Flask(__name__, template_folder='templates')
+app = Flask(__name__, template_folder=TEMPLATE_DIR)
 
 # --- تعطيل التحقق من شهادات SSL للطلبات ---
 SSL_CONTEXT = ssl._create_unverified_context()
@@ -75,7 +79,6 @@ def http_post(url, data=None, headers=None, timeout=30):
     if isinstance(data, str):
         data = data.encode("utf-8")
     req_headers = dict(headers or {})
-    # إزالة Accept-Encoding لتجنب استلام بيانات مضغوطة بـ gzip/deflate بدون فك ضغطها
     req_headers.pop("Accept-Encoding", None)
     req = urllib.request.Request(url, data=data, headers=req_headers, method="POST")
     try:
@@ -351,7 +354,19 @@ def generate_one_backend(region):
 # ============================================================
 @app.route('/')
 def home():
-    return render_template('index.html')
+    # إذا كان index.html في مجلد templates يتم عرضه، وإلا يتم البحث عنه في المجلد الرئيسي كاحتياط
+    if os.path.exists(os.path.join(TEMPLATE_DIR, 'index.html')):
+        return render_template('index.html')
+    root_index = os.path.join(BASE_DIR, 'index.html')
+    if os.path.exists(root_index):
+        with open(root_index, 'r', encoding='utf-8') as f:
+            return f.read()
+    return "Error: index.html not found in templates/ or root directory.", 404
+
+
+@app.route('/health')
+def health():
+    return jsonify({"status": "ok"}), 200
 
 
 @app.route('/api/generate', methods=['POST'])
@@ -372,7 +387,6 @@ def generate():
 
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    print(f"Server running on port {port}")
+    port = int(os.environ.get("PORT", 8080))
+    print(f"Server running on 0.0.0.0:{port}")
     app.run(host="0.0.0.0", port=port, debug=False)
-
